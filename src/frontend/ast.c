@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <shared/helper/mem.h>
+
 static const char *ast_node_type_names[] = {
     "AST_NONE",
 
@@ -26,7 +28,7 @@ static const char *ast_node_type_names[] = {
 };
 
 struct ast_node *ast_create_node(enum ast_node_type type) {
-    struct ast_node *node = malloc(sizeof(struct ast_node));
+    struct ast_node *node = xmalloc(sizeof(struct ast_node));
     node->type = type;
     node->child_count = 0;
     node->children = NULL;
@@ -38,21 +40,21 @@ void ast_destroy_node(struct ast_node *node) {
         for (size_t i = 0; i < node->child_count; i++) {
             ast_destroy_node(node->children[i]);
         }
-        free(node->children);
+        xfree(node->children);
         switch (node->type) {
             case AST_IDENTIFIER:
-                free(node->data.identifier);
+                xfree(node->data.identifier);
                 break;
             default:
                 break;
         }
-        free(node);
+        xfree(node);
     }
 }
 
 void ast_add_child_node(struct ast_node *parent, struct ast_node *child) {
     parent->child_count++;
-    parent->children = realloc(parent->children, sizeof(struct ast_node *) * parent->child_count);
+    parent->children = xrealloc(parent->children, sizeof(struct ast_node *) * parent->child_count);
     parent->children[parent->child_count - 1] = child;
 }
 

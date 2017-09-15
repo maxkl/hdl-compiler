@@ -8,6 +8,8 @@
 #include <ctype.h>
 #include <string.h>
 
+#include <shared/helper/mem.h>
+
 static const char *token_type_names[] = {
     "(none)",
     "end of file",
@@ -33,22 +35,18 @@ const char *lexer_token_type_name(enum lexer_token_type type) {
 }
 
 struct lexer_location *lexer_create_location() {
-    struct lexer_location *location = malloc(sizeof(struct lexer_location));
+    struct lexer_location *location = xmalloc(sizeof(struct lexer_location));
     location->filename = NULL;
     return location;
 }
 
 void lexer_destroy_location(struct lexer_location *location) {
-    if (location->filename != NULL) {
-        free(location->filename);
-    }
-    free(location);
+    xfree(location->filename);
+    xfree(location);
 }
 
 void lexer_copy_location(struct lexer_location *target, struct lexer_location *source) {
-    if (target->filename != NULL) {
-        free(target->filename);
-    }
+    xfree(target->filename);
     target->filename = strdup(source->filename);
     target->line_number = source->line_number;
     target->column = source->column;
@@ -59,7 +57,7 @@ void lexer_print_location(FILE *stream, struct lexer_location *location) {
 }
 
 struct lexer *lexer_create(FILE *f, const char *filename) {
-    struct lexer *lexer = malloc(sizeof(struct lexer));
+    struct lexer *lexer = xmalloc(sizeof(struct lexer));
     lexer->f = f;
     lexer->location = lexer_create_location();
     lexer->location->line_number = 1;
@@ -72,11 +70,11 @@ struct lexer *lexer_create(FILE *f, const char *filename) {
 void lexer_destroy(struct lexer *lexer) {
     lexer_destroy_location(lexer->location);
     lexer_destroy_location(lexer->last_location);
-    free(lexer);
+    xfree(lexer);
 }
 
 struct lexer_token *lexer_create_token() {
-    struct lexer_token *token = malloc(sizeof(struct lexer_token));
+    struct lexer_token *token = xmalloc(sizeof(struct lexer_token));
     token->type = TOKEN_NONE;
     token->location = lexer_create_location();
     return token;
@@ -85,13 +83,13 @@ struct lexer_token *lexer_create_token() {
 void lexer_destroy_token(struct lexer_token *token) {
     switch (token->type) {
         case TOKEN_IDENTIFIER:
-            free(token->value.identifier);
+            xfree(token->value.identifier);
             break;
         default:
             break;
     }
     lexer_destroy_location(token->location);
-    free(token);
+    xfree(token);
 }
 
 int lexer_getc(struct lexer *lexer) {
@@ -150,24 +148,24 @@ int lexer_read_next_token(struct lexer *lexer, struct lexer_token **token_out) {
 
         do {
             len++;
-            str = realloc(str, len);
+            str = xrealloc(str, len);
             str[len - 1] = c;
             c = lexer_getc(lexer);
         } while (isalpha(c) || isdigit(c) || c == '_');
 
         lexer_ungetc(lexer);
 
-        str = realloc(str, len + 1);
+        str = xrealloc(str, len + 1);
         str[len] = '\0';
 
         if (strcmp(str, "in") == 0) {
-            free(str);
+            xfree(str);
             token->type = TOKEN_KEYWORD_IN;
         } else if (strcmp(str, "out") == 0) {
-            free(str);
+            xfree(str);
             token->type = TOKEN_KEYWORD_OUT;
         } else if (strcmp(str, "block") == 0) {
-            free(str);
+            xfree(str);
             token->type = TOKEN_KEYWORD_BLOCK;
         } else {
             token->type = TOKEN_IDENTIFIER;

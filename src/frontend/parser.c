@@ -7,8 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <shared/helper/mem.h>
+
 struct parser *parser_create(struct lexer *lexer) {
-    struct parser *parser = malloc(sizeof(struct parser));
+    struct parser *parser = xmalloc(sizeof(struct parser));
     parser->lexer = lexer;
     parser->lookahead = NULL;
     return parser;
@@ -18,7 +20,7 @@ void parser_destroy(struct parser *parser) {
     if (parser->lookahead != NULL) {
         lexer_destroy_token(parser->lookahead);
     }
-    free(parser);
+    xfree(parser);
 }
 
 static int parser_read_lookahead(struct parser *parser) {
