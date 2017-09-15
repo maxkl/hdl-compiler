@@ -8,9 +8,9 @@
 #include <string.h>
 #include <errno.h>
 
-#include <helper/buffer.h>
-#include <helper/log.h>
-#include <helper/mem.h>
+#include <shared/helper/buffer.h>
+#include <shared/helper/log.h>
+#include <shared/helper/mem.h>
 
 #define ARRAY_SIZE(a) (sizeof((a)) / sizeof(*(a)))
 
