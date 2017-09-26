@@ -64,14 +64,8 @@ void xfree(void *ptr) {
 
 char *xstrdup(const char *str) {
     assert(str != NULL);
-    char *new_str = strdup(str);
-    if (new_str == NULL) {
-        handle_oom();
-        new_str = strdup(str);
-        if (new_str == NULL) {
-            die_oom();
-            // die_oom() will never return
-        }
-    }
+    size_t len = strlen(str) + 1;
+    char *new_str = xmalloc(len);
+    memcpy(new_str, str, len);
     return new_str;
 }

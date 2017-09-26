@@ -1,6 +1,4 @@
 
-#define _POSIX_C_SOURCE 200809L
-
 #include "parser.h"
 
 #include <stdio.h>
@@ -76,7 +74,7 @@ static int parse_identifier(struct parser *parser, struct ast_node **node) {
     }
 
     *node = ast_create_node(AST_IDENTIFIER);
-    (*node)->data.identifier = strdup(token->value.identifier);
+    (*node)->data.identifier = xstrdup(token->value.identifier);
 
     lexer_destroy_token(token);
 

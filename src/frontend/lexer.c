@@ -1,6 +1,4 @@
 
-#define _POSIX_C_SOURCE 200809L
-
 #include "lexer.h"
 
 #include <stdio.h>
@@ -47,7 +45,7 @@ void lexer_destroy_location(struct lexer_location *location) {
 
 void lexer_copy_location(struct lexer_location *target, struct lexer_location *source) {
     xfree(target->filename);
-    target->filename = strdup(source->filename);
+    target->filename = xstrdup(source->filename);
     target->line_number = source->line_number;
     target->column = source->column;
 }
@@ -62,7 +60,7 @@ struct lexer *lexer_create(FILE *f, const char *filename) {
     lexer->location = lexer_create_location();
     lexer->location->line_number = 1;
     lexer->location->column = 0;
-    lexer->location->filename = strdup(filename);
+    lexer->location->filename = xstrdup(filename);
     lexer->last_location = lexer_create_location();
     return lexer;
 }
