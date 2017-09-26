@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 
 static void die_oom() {
@@ -59,4 +60,18 @@ void *xrealloc(void *old_ptr, size_t size) {
 
 void xfree(void *ptr) {
     free(ptr);
+}
+
+char *xstrdup(const char *str) {
+    assert(str != NULL);
+    char *new_str = strdup(str);
+    if (new_str == NULL) {
+        handle_oom();
+        new_str = strdup(str);
+        if (new_str == NULL) {
+            die_oom();
+            // die_oom() will never return
+        }
+    }
+    return new_str;
 }

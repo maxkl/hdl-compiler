@@ -52,3 +52,30 @@ static inline uint64_t buffer_read64be(uint8_t *buffer, size_t address) {
          | (uint64_t) buffer[address + 6] << 8
          | (uint64_t) buffer[address + 7] << 0;
 }
+
+static inline void buffer_write8(uint8_t *buffer, size_t address, uint8_t value) {
+    buffer[address + 0] = (value >> 0) & 0xff;
+}
+
+static inline void buffer_write16le(uint8_t *buffer, size_t address, uint16_t value) {
+    buffer[address + 0] = (value >> 0) & 0xff;
+    buffer[address + 1] = (value >> 8) & 0xff;
+}
+
+static inline void buffer_write32le(uint8_t *buffer, size_t address, uint32_t value) {
+    buffer[address + 0] = (value >> 0) & 0xff;
+    buffer[address + 1] = (value >> 8) & 0xff;
+    buffer[address + 2] = (value >> 16) & 0xff;
+    buffer[address + 3] = (value >> 24) & 0xff;
+}
+
+static inline void buffer_write64le(uint8_t *buffer, size_t address, uint64_t value) {
+    buffer[address + 0] = (value >> 0) & 0xff;
+    buffer[address + 1] = (value >> 8) & 0xff;
+    buffer[address + 2] = (value >> 16) & 0xff;
+    buffer[address + 3] = (value >> 24) & 0xff;
+    buffer[address + 4] = (value >> 32) & 0xff;
+    buffer[address + 5] = (value >> 40) & 0xff;
+    buffer[address + 6] = (value >> 48) & 0xff;
+    buffer[address + 7] = (value >> 56) & 0xff;
+}
