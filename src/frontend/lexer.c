@@ -16,9 +16,16 @@ static const char *token_type_names[] = {
     "'.'",
     "','",
     "';'",
+    "':'",
     "'='",
+    "'&'",
+    "'|'",
     "'{'",
     "'}'",
+    "'['",
+    "']'",
+    "'('",
+    "')'",
     "'in'",
     "'out'",
     "'block'"
@@ -175,12 +182,26 @@ int lexer_read_next_token(struct lexer *lexer, struct lexer_token **token_out) {
         token->type = TOKEN_COMMA;
     } else if (c == ';') {
         token->type = TOKEN_SEMICOLON;
+    } else if (c == ':') {
+        token->type = TOKEN_COLON;
     } else if (c == '=') {
         token->type = TOKEN_EQUALS;
+    } else if (c == '&') {
+        token->type = TOKEN_AND;
+    } else if (c == '|') {
+        token->type = TOKEN_OR;
     } else if (c == '{') {
         token->type = TOKEN_BRACE_LEFT;
     } else if (c == '}') {
         token->type = TOKEN_BRACE_RIGHT;
+    } else if (c == '[') {
+        token->type = TOKEN_BRACKET_LEFT;
+    } else if (c == ']') {
+        token->type = TOKEN_BRACKET_RIGHT;
+    } else if (c == '(') {
+        token->type = TOKEN_PARENTHESIS_LEFT;
+    } else if (c == ')') {
+        token->type = TOKEN_PARENTHESIS_RIGHT;
     } else if (c == EOF) {
         token->type = TOKEN_EOF;
     } else {

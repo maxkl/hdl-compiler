@@ -1,0 +1,28 @@
+
+block alu {
+    in a[4], b[4], c_in;
+    out s[4], c_out;
+    block adder adder0, adder1, adder2, adder3;
+
+    adder0.a = a[0];
+    adder0.b = b[0];
+    adder0.c_in = c_in;
+    s[0] = adder0.s;
+
+    adder1.a = a[1];
+    adder1.b = b[1];
+    adder1.c_in = adder0.c_out;
+    s[1] = adder1.s;
+
+    adder2.a = a[2];
+    adder2.b = b[2];
+    adder2.c_in = adder1.c_out;
+    s[2] = adder2.s;
+
+    adder3.a = a[3];
+    adder3.b = b[3];
+    adder3.c_in = adder2.c_out;
+    s[3] = adder3.s;
+
+    c_out = adder3.c_out;
+}
