@@ -15,7 +15,6 @@ enum ast_node_type {
     AST_DECLARATIONS,
     AST_DECLARATION,
     AST_DECLARATION_IDENTIFIER_LIST,
-    AST_DECLARATION_IDENTIFIER_LIST_REST,
     AST_DECLARATION_IDENTIFIER,
     AST_DECLARATION_WIDTH,
     AST_TYPE_IN,
@@ -25,15 +24,19 @@ enum ast_node_type {
     AST_BEHAVIOUR_STATEMENT,
     AST_BEHAVIOUR_IDENTIFIER,
     AST_DOTTED_IDENTIFIER,
-    AST_DOTTED_IDENTIFIER_REST,
     AST_SUBSCRIPT,
     AST_SUBSCRIPT_RANGE,
 
-    AST_EXPR,
-    AST_EXPR_REST,
-    AST_ANDEXPR,
-    AST_ANDEXPR_REST,
-    AST_OPERAND
+    AST_BINARY_EXPRESSION,
+    AST_UNARY_EXPRESSION
+};
+
+enum ast_op {
+    AST_OP_NONE = 0,
+    AST_OP_AND,
+    AST_OP_OR,
+    AST_OP_XOR,
+    AST_OP_NOT
 };
 
 struct ast_node {
@@ -43,6 +46,7 @@ struct ast_node {
     union {
         char *identifier;
         uint64_t number;
+        enum ast_op op;
     } data;
 };
 

@@ -17,7 +17,6 @@ static const char *ast_node_type_names[] = {
     "AST_DECLARATIONS",
     "AST_DECLARATION",
     "AST_DECLARATION_IDENTIFIER_LIST",
-    "AST_DECLARATION_IDENTIFIER_LIST_REST",
     "AST_DECLARATION_IDENTIFIER",
     "AST_DECLARATION_WIDTH",
     "AST_TYPE_IN",
@@ -27,15 +26,19 @@ static const char *ast_node_type_names[] = {
     "AST_BEHAVIOUR_STATEMENT",
     "AST_BEHAVIOUR_IDENTIFIER",
     "AST_DOTTED_IDENTIFIER",
-    "AST_DOTTED_IDENTIFIER_REST",
     "AST_SUBSCRIPT",
     "AST_SUBSCRIPT_RANGE",
 
-    "AST_EXPR",
-    "AST_EXPR_REST",
-    "AST_ANDEXPR",
-    "AST_ANDEXPR_REST",
-    "AST_OPERAND"
+    "AST_BINARY_EXPRESSION",
+    "AST_UNARY_EXPRESSION"
+};
+
+static const char *ast_op_names[] = {
+    "(none)",
+    "AND",
+    "OR",
+    "XOR",
+    "NOT"
 };
 
 struct ast_node *ast_create_node(enum ast_node_type type) {
@@ -80,6 +83,10 @@ static void print_node(struct ast_node *node, unsigned level) {
                 break;
             case AST_NUMBER:
                 printf(" %lu", node->data.number);
+                break;
+            case AST_BINARY_EXPRESSION:
+            case AST_UNARY_EXPRESSION:
+                printf(" %s", ast_op_names[node->data.op]);
                 break;
             default:
                 break;

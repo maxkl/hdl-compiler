@@ -20,6 +20,8 @@ static const char *token_type_names[] = {
     "'='",
     "'&'",
     "'|'",
+    "'^'",
+    "'~'",
     "'{'",
     "'}'",
     "'['",
@@ -190,6 +192,10 @@ int lexer_read_next_token(struct lexer *lexer, struct lexer_token **token_out) {
         token->type = TOKEN_AND;
     } else if (c == '|') {
         token->type = TOKEN_OR;
+    } else if (c == '^') {
+        token->type = TOKEN_XOR;
+    } else if (c == '~') {
+        token->type = TOKEN_NOT;
     } else if (c == '{') {
         token->type = TOKEN_BRACE_LEFT;
     } else if (c == '}') {

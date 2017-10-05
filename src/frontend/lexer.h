@@ -20,6 +20,8 @@ enum lexer_token_type {
     TOKEN_EQUALS,
     TOKEN_AND,
     TOKEN_OR,
+    TOKEN_XOR,
+    TOKEN_NOT,
 
     TOKEN_BRACE_LEFT,
     TOKEN_BRACE_RIGHT,

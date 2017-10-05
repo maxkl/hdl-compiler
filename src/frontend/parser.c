@@ -47,25 +47,42 @@ static int parser_match(struct parser *parser, enum lexer_token_type type, struc
 }
 
 /*
- * blocks                           -> block blocks | E
+ * blocks                           -> ( block )*
  * block                            -> 'block' identifier '{' declarations behaviour_statements '}'
- * declarations                     -> declaration declarations | E
+ * declarations                     -> ( declaration )*
  * declaration                      -> type declaration_identifier_list ';'
- * declaration_identifier_list      -> declaration_identifier declaration_identifier_list_rest
- * declaration_identifier_list_rest -> ',' declaration_identifier declaration_identifier_list_rest | E
+ * declaration_identifier_list      -> declaration_identifier ( ',' declaration_identifier )*
  * declaration_identifier           -> identifier declaration_width
  * declaration_width                -> '[' number ']' | E
  * type                             -> type_in | type_out | type_block
  * type_in                          -> 'in'
  * type_out                         -> 'out'
  * type_block                       -> 'block' identifier
- * behaviour_statements             -> behaviour_statement behaviour_statements | E
- * behaviour_statement              -> behaviour_identifier '=' behaviour_identifier ';'
+ * behaviour_statements             -> ( behaviour_statement )*
+ * behaviour_statement              -> behaviour_identifier '=' expression ';'
  * behaviour_identifier             -> dotted_identifier subscript
- * dotted_identifier                -> identifier dotted_identifier_rest
- * dotted_identifier_rest           -> '.' identifier dotted_identifier_rest | E
+ * dotted_identifier                -> identifier ( '.' identifier )*
  * subscript                        -> '[' number subscript_range ']' | E
  * subscript_range                  -> ':' number | E
+ */
+
+/*
+ * Operators:
+ *
+ * Unary:
+ *   Bitwise NOT: ~
+ * Bitwise AND: &
+ * Bitwise XOR: ^
+ * Bitwise OR: |
+ */
+
+/*
+ * expr -> bit_or_expr
+ * bit_or_expr -> bit_xor_expr ( '|' bit_xor_expr )*
+ * bit_xor_expr -> bit_and_expr ( '^' bit_and_expr )*
+ * bit_and_expr -> unary_expr ( '&' unary_expr )*
+ * unary_expr -> '~' unary_expr | primary_expr
+ * primary_expr -> '(' expr ')' | behaviour_identifier | number
  */
 
 static int parse_identifier(struct parser *parser, struct ast_node **node) {
@@ -104,13 +121,15 @@ static int parse_number(struct parser *parser, struct ast_node **node) {
     return 0;
 }
 
-static int parse_expr(struct parser *parser, struct ast_node **node);
+static int parse_expression(struct parser *parser, struct ast_node **node);
+static int parse_behaviour_identifier(struct parser *parser, struct ast_node **node);
 
-static int parse_operand(struct parser *parser, struct ast_node **node) {
+static int parse_primary_expression(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *expr = NULL;
-    struct ast_node *identifier = NULL;
+    struct ast_node *expression = NULL;
+    struct ast_node *behaviour_identifier = NULL;
+    struct ast_node *number = NULL;
 
     switch (parser->lookahead->type) {
         case TOKEN_PARENTHESIS_LEFT:
@@ -119,7 +138,7 @@ static int parse_operand(struct parser *parser, struct ast_node **node) {
                 goto err;
             }
 
-            ret = parse_expr(parser, &expr);
+            ret = parse_expression(parser, &expression);
             if (ret) {
                 goto err;
             }
@@ -129,148 +148,208 @@ static int parse_operand(struct parser *parser, struct ast_node **node) {
                 goto err;
             }
 
-            *node = ast_create_node(AST_OPERAND);
-            ast_add_child_node(*node, expr);
+            *node = expression;
 
             break;
-        default: {
-            ret = parse_identifier(parser, &identifier);
+        case TOKEN_IDENTIFIER:
+            ret = parse_behaviour_identifier(parser, &behaviour_identifier);
             if (ret) {
                 goto err;
             }
 
-            *node = ast_create_node(AST_OPERAND);
-            ast_add_child_node(*node, identifier);
+            *node = behaviour_identifier;
+
+            break;
+        case TOKEN_NUMBER:
+            ret = parse_number(parser, &number);
+            if (ret) {
+                goto err;
+            }
+
+            *node = number;
+
+            break;
+        default:
+            lexer_print_location(stderr, parser->lookahead->location);
+            fprintf(stderr, ": Expected '(', identifier or number\n");
+            ret = -1;
+            goto err;
+    }
+
+    return 0;
+
+err:
+    ast_destroy_node(expression);
+    ast_destroy_node(behaviour_identifier);
+    ast_destroy_node(number);
+    return ret;
+}
+
+static int parse_unary_expression(struct parser *parser, struct ast_node **node) {
+    int ret;
+
+    struct ast_node *unary_expression = NULL;
+    struct ast_node *primary_expression = NULL;
+
+    switch (parser->lookahead->type) {
+        case TOKEN_NOT:
+            ret = parser_match(parser, TOKEN_NOT, NULL);
+            if (ret) {
+                goto err;
+            }
+
+            ret = parse_unary_expression(parser, &unary_expression);
+            if (ret) {
+                goto err;
+            }
+
+            *node = ast_create_node(AST_UNARY_EXPRESSION);
+            (*node)->data.op = AST_OP_NOT;
+            ast_add_child_node(*node, unary_expression);
+
+            break;
+        default:
+            ret = parse_primary_expression(parser, &primary_expression);
+            if (ret) {
+                goto err;
+            }
+
+            *node = primary_expression;
+    }
+
+    return 0;
+
+err:
+    ast_destroy_node(unary_expression);
+    ast_destroy_node(primary_expression);
+    return ret;
+}
+
+static int parse_bitwise_and_expression(struct parser *parser, struct ast_node **node) {
+    int ret;
+
+    struct ast_node *left = NULL;
+    struct ast_node *right = NULL;
+
+    ret = parse_unary_expression(parser, &left);
+    if (ret) {
+        goto err;
+    }
+
+    while (parser->lookahead->type == TOKEN_AND) {
+        ret = parser_match(parser, TOKEN_AND, NULL);
+        if (ret) {
+            goto err;
         }
+
+        ret = parse_unary_expression(parser, &right);
+        if (ret) {
+            goto err;
+        }
+
+        struct ast_node *new_left = ast_create_node(AST_BINARY_EXPRESSION);
+        new_left->data.op = AST_OP_AND;
+        ast_add_child_node(new_left, left);
+        ast_add_child_node(new_left, right);
+
+        left = new_left;
+        right = NULL;
     }
+
+    *node = left;
 
     return 0;
 
 err:
-    ast_destroy_node(expr);
-    ast_destroy_node(identifier);
+    ast_destroy_node(left);
+    ast_destroy_node(right);
     return ret;
 }
 
-static int parse_andexpr_rest(struct parser *parser, struct ast_node **node) {
+static int parse_bitwise_xor_expression(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *operand = NULL;
+    struct ast_node *left = NULL;
+    struct ast_node *right = NULL;
 
-    switch (parser->lookahead->type) {
-        case TOKEN_AND:
-            ret = parser_match(parser, TOKEN_AND, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_operand(parser, &operand);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_ANDEXPR_REST);
-            ast_add_child_node(*node, operand);
-
-            break;
-        default:
-            printf("-> E\n");
-            *node = NULL;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(operand);
-    return ret;
-}
-
-static int parse_andexpr(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *operand = NULL;
-    struct ast_node *andexpr_rest = NULL;
-
-    ret = parse_operand(parser, &operand);
+    ret = parse_bitwise_and_expression(parser, &left);
     if (ret) {
         goto err;
     }
 
-    ret = parse_andexpr_rest(parser, &andexpr_rest);
-    if (ret) {
-        goto err;
+    while (parser->lookahead->type == TOKEN_XOR) {
+        ret = parser_match(parser, TOKEN_XOR, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_bitwise_and_expression(parser, &right);
+        if (ret) {
+            goto err;
+        }
+
+        struct ast_node *new_left = ast_create_node(AST_BINARY_EXPRESSION);
+        new_left->data.op = AST_OP_XOR;
+        ast_add_child_node(new_left, left);
+        ast_add_child_node(new_left, right);
+
+        left = new_left;
+        right = NULL;
     }
 
-    *node = ast_create_node(AST_ANDEXPR);
-    ast_add_child_node(*node, operand);
-    ast_add_child_node(*node, andexpr_rest);
+    *node = left;
 
     return 0;
 
 err:
-    ast_destroy_node(operand);
-    ast_destroy_node(andexpr_rest);
+    ast_destroy_node(left);
+    ast_destroy_node(right);
     return ret;
 }
 
-static int parse_expr_rest(struct parser *parser, struct ast_node **node) {
+static int parse_bitwise_or_expression(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *andexpr = NULL;
+    struct ast_node *left = NULL;
+    struct ast_node *right = NULL;
 
-    switch (parser->lookahead->type) {
-        case TOKEN_OR:
-            ret = parser_match(parser, TOKEN_OR, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_andexpr(parser, &andexpr);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_EXPR_REST);
-            ast_add_child_node(*node, andexpr);
-
-            break;
-        default:
-            *node = NULL;
+    ret = parse_bitwise_xor_expression(parser, &left);
+    if (ret) {
+        goto err;
     }
+
+    while (parser->lookahead->type == TOKEN_OR) {
+        ret = parser_match(parser, TOKEN_OR, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_bitwise_xor_expression(parser, &right);
+        if (ret) {
+            goto err;
+        }
+
+        struct ast_node *new_left = ast_create_node(AST_BINARY_EXPRESSION);
+        new_left->data.op = AST_OP_OR;
+        ast_add_child_node(new_left, left);
+        ast_add_child_node(new_left, right);
+
+        left = new_left;
+        right = NULL;
+    }
+
+    *node = left;
 
     return 0;
 
 err:
-    ast_destroy_node(andexpr);
+    ast_destroy_node(left);
+    ast_destroy_node(right);
     return ret;
 }
 
-static int parse_expr(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *andexpr = NULL;
-    struct ast_node *expr_rest = NULL;
-
-    ret = parse_andexpr(parser, &andexpr);
-    if (ret) {
-        goto err;
-    }
-
-    ret = parse_expr_rest(parser, &expr_rest);
-    if (ret) {
-        goto err;
-    }
-
-    *node = ast_create_node(AST_EXPR);
-    ast_add_child_node(*node, andexpr);
-    ast_add_child_node(*node, expr_rest);
-
-    return 0;
-
-err:
-    ast_destroy_node(andexpr);
-    ast_destroy_node(expr_rest);
-    return ret;
+static int parse_expression(struct parser *parser, struct ast_node **node) {
+    return parse_bitwise_or_expression(parser, node);
 }
 
 static int parse_subscript_range(struct parser *parser, struct ast_node **node) {
@@ -350,71 +429,43 @@ err:
     return ret;
 }
 
-static int parse_dotted_identifier_rest(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *identifier = NULL;
-    struct ast_node *dotted_identifier_rest = NULL;
-
-    switch (parser->lookahead->type) {
-        case TOKEN_DOT:
-            ret = parser_match(parser, TOKEN_DOT, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_identifier(parser, &identifier);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_dotted_identifier_rest(parser, &dotted_identifier_rest);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_DOTTED_IDENTIFIER_REST);
-            ast_add_child_node(*node, identifier);
-            ast_add_child_node(*node, dotted_identifier_rest);
-
-            break;
-        default:
-            *node = NULL;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(identifier);
-    ast_destroy_node(dotted_identifier_rest);
-    return ret;
-}
-
 static int parse_dotted_identifier(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *identifier = NULL;
-    struct ast_node *dotted_identifier_rest = NULL;
+    struct ast_node *left = NULL;
+    struct ast_node *right = NULL;
 
-    ret = parse_identifier(parser, &identifier);
+    ret = parse_identifier(parser, &left);
     if (ret) {
         goto err;
     }
 
-    ret = parse_dotted_identifier_rest(parser, &dotted_identifier_rest);
-    if (ret) {
-        goto err;
+    while (parser->lookahead->type == TOKEN_DOT) {
+        ret = parser_match(parser, TOKEN_DOT, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_identifier(parser, &right);
+        if (ret) {
+            goto err;
+        }
+
+        struct ast_node *new_left = ast_create_node(AST_DOTTED_IDENTIFIER);
+        ast_add_child_node(new_left, left);
+        ast_add_child_node(new_left, right);
+
+        left = new_left;
+        right = NULL;
     }
 
-    *node = ast_create_node(AST_DOTTED_IDENTIFIER);
-    ast_add_child_node(*node, identifier);
-    ast_add_child_node(*node, dotted_identifier_rest);
+    *node = left;
 
     return 0;
 
 err:
-    ast_destroy_node(identifier);
-    ast_destroy_node(dotted_identifier_rest);
+    ast_destroy_node(left);
+    ast_destroy_node(right);
     return ret;
 }
 
@@ -449,10 +500,10 @@ err:
 static int parse_behaviour_statement(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *behaviour_identifier_1 = NULL;
-    struct ast_node *behaviour_identifier_2 = NULL;
+    struct ast_node *behaviour_identifier = NULL;
+    struct ast_node *expression = NULL;
 
-    ret = parse_behaviour_identifier(parser, &behaviour_identifier_1);
+    ret = parse_behaviour_identifier(parser, &behaviour_identifier);
     if (ret) {
         goto err;
     }
@@ -462,7 +513,7 @@ static int parse_behaviour_statement(struct parser *parser, struct ast_node **no
         goto err;
     }
 
-    ret = parse_behaviour_identifier(parser, &behaviour_identifier_2);
+    ret = parse_expression(parser, &expression);
     if (ret) {
         goto err;
     }
@@ -473,49 +524,44 @@ static int parse_behaviour_statement(struct parser *parser, struct ast_node **no
     }
 
     *node = ast_create_node(AST_BEHAVIOUR_STATEMENT);
-    ast_add_child_node(*node, behaviour_identifier_1);
-    ast_add_child_node(*node, behaviour_identifier_2);
+    ast_add_child_node(*node, behaviour_identifier);
+    ast_add_child_node(*node, expression);
 
     return 0;
 
 err:
-    ast_destroy_node(behaviour_identifier_1);
-    ast_destroy_node(behaviour_identifier_2);
+    ast_destroy_node(behaviour_identifier);
+    ast_destroy_node(expression);
     return ret;
 }
 
 static int parse_behaviour_statements(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *behaviour_statement = NULL;
     struct ast_node *behaviour_statements = NULL;
+    struct ast_node *behaviour_statement = NULL;
 
-    switch (parser->lookahead->type) {
-        case TOKEN_IDENTIFIER:
-            ret = parse_behaviour_statement(parser, &behaviour_statement);
-            if (ret) {
-                goto err;
-            }
+    while (parser->lookahead->type == TOKEN_IDENTIFIER) {
+        ret = parse_behaviour_statement(parser, &behaviour_statement);
+        if (ret) {
+            goto err;
+        }
 
-            ret = parse_behaviour_statements(parser, &behaviour_statements);
-            if (ret) {
-                goto err;
-            }
+        struct ast_node *new_behaviour_statements = ast_create_node(AST_BEHAVIOUR_STATEMENTS);
+        ast_add_child_node(new_behaviour_statements, behaviour_statements);
+        ast_add_child_node(new_behaviour_statements, behaviour_statement);
 
-            *node = ast_create_node(AST_BEHAVIOUR_STATEMENTS);
-            ast_add_child_node(*node, behaviour_statement);
-            ast_add_child_node(*node, behaviour_statements);
-
-            break;
-        default:
-            *node = NULL;
+        behaviour_statements = new_behaviour_statements;
+        behaviour_statement = NULL;
     }
+
+    *node = behaviour_statements;
 
     return 0;
 
 err:
-    ast_destroy_node(behaviour_statement);
     ast_destroy_node(behaviour_statements);
+    ast_destroy_node(behaviour_statement);
     return ret;
 }
 
@@ -637,72 +683,43 @@ err:
     return ret;
 }
 
-static int parse_declaration_identifier_list_rest(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *declaration_identifier = NULL;
-    struct ast_node *declaration_identifier_list_rest = NULL;
-
-    switch (parser->lookahead->type) {
-        case TOKEN_COMMA:
-            ret = parser_match(parser, TOKEN_COMMA, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_declaration_identifier(parser, &declaration_identifier);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_declaration_identifier_list_rest(parser, &declaration_identifier_list_rest);
-            if (ret) {
-                ast_destroy_node(declaration_identifier);
-                goto err;
-            }
-
-            *node = ast_create_node(AST_DECLARATION_IDENTIFIER_LIST_REST);
-            ast_add_child_node(*node, declaration_identifier);
-            ast_add_child_node(*node, declaration_identifier_list_rest);
-
-            break;
-        default:
-            *node = NULL;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(declaration_identifier);
-    ast_destroy_node(declaration_identifier_list_rest);
-    return ret;
-}
-
 static int parse_declaration_identifier_list(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *declaration_identifier = NULL;
-    struct ast_node *declaration_identifier_list_rest = NULL;
+    struct ast_node *left = NULL;
+    struct ast_node *right = NULL;
 
-    ret = parse_declaration_identifier(parser, &declaration_identifier);
+    ret = parse_declaration_identifier(parser, &left);
     if (ret) {
         goto err;
     }
 
-    ret = parse_declaration_identifier_list_rest(parser, &declaration_identifier_list_rest);
-    if (ret) {
-        goto err;
+    while (parser->lookahead->type == TOKEN_COMMA) {
+        ret = parser_match(parser, TOKEN_COMMA, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_declaration_identifier(parser, &right);
+        if (ret) {
+            goto err;
+        }
+
+        struct ast_node *new_left = ast_create_node(AST_DECLARATION_IDENTIFIER_LIST);
+        ast_add_child_node(new_left, left);
+        ast_add_child_node(new_left, right);
+
+        left = new_left;
+        right = NULL;
     }
 
-    *node = ast_create_node(AST_DECLARATION_IDENTIFIER_LIST);
-    ast_add_child_node(*node, declaration_identifier);
-    ast_add_child_node(*node, declaration_identifier_list_rest);
+    *node = left;
 
     return 0;
 
 err:
-    ast_destroy_node(declaration_identifier);
-    ast_destroy_node(declaration_identifier_list_rest);
+    ast_destroy_node(left);
+    ast_destroy_node(right);
     return ret;
 }
 
@@ -742,37 +759,33 @@ err:
 static int parse_declarations(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *declaration = NULL;
     struct ast_node *declarations = NULL;
+    struct ast_node *declaration = NULL;
 
-    switch (parser->lookahead->type) {
-        case TOKEN_KEYWORD_IN:
-        case TOKEN_KEYWORD_OUT:
-        case TOKEN_KEYWORD_BLOCK:
-            ret = parse_declaration(parser, &declaration);
-            if (ret) {
-                goto err;
-            }
+    while (parser->lookahead->type == TOKEN_KEYWORD_IN
+        || parser->lookahead->type == TOKEN_KEYWORD_OUT
+        || parser->lookahead->type == TOKEN_KEYWORD_BLOCK
+        ) {
+        ret = parse_declaration(parser, &declaration);
+        if (ret) {
+            goto err;
+        }
 
-            ret = parse_declarations(parser, &declarations);
-            if (ret) {
-                goto err;
-            }
+        struct ast_node *new_declarations = ast_create_node(AST_DECLARATIONS);
+        ast_add_child_node(new_declarations, declarations);
+        ast_add_child_node(new_declarations, declaration);
 
-            *node = ast_create_node(AST_DECLARATIONS);
-            ast_add_child_node(*node, declaration);
-            ast_add_child_node(*node, declarations);
-
-            break;
-        default:
-            *node = NULL;
+        declarations = new_declarations;
+        declaration = NULL;
     }
+
+    *node = declarations;
 
     return 0;
 
 err:
-    ast_destroy_node(declaration);
     ast_destroy_node(declarations);
+    ast_destroy_node(declaration);
     return ret;
 }
 
@@ -830,35 +843,30 @@ err:
 static int parse_blocks(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *block = NULL;
     struct ast_node *blocks = NULL;
+    struct ast_node *block = NULL;
 
-    switch (parser->lookahead->type) {
-        case TOKEN_KEYWORD_BLOCK:
-            ret = parse_block(parser, &block);
-            if (ret) {
-                goto err;
-            }
+    while (parser->lookahead->type == TOKEN_KEYWORD_BLOCK) {
+        ret = parse_block(parser, &block);
+        if (ret) {
+            goto err;
+        }
 
-            ret = parse_blocks(parser, &blocks);
-            if (ret) {
-                goto err;
-            }
+        struct ast_node *new_blocks = ast_create_node(AST_BLOCKS);
+        ast_add_child_node(new_blocks, blocks);
+        ast_add_child_node(new_blocks, block);
 
-            *node = ast_create_node(AST_BLOCKS);
-            ast_add_child_node(*node, block);
-            ast_add_child_node(*node, blocks);
-
-            break;
-        default:
-            *node = NULL;
+        blocks = new_blocks;
+        block = NULL;
     }
+
+    *node = blocks;
 
     return 0;
 
 err:
-    ast_destroy_node(block);
     ast_destroy_node(blocks);
+    ast_destroy_node(block);
     return ret;
 }
 
