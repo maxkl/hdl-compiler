@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include <shared/helper/mem.h>
 
@@ -810,8 +809,6 @@ err:
 int parser_parse(struct parser *parser, struct ast_node **root_out) {
     int ret;
 
-    clock_t start = clock();
-
     ret = parser_read_lookahead(parser);
     if (ret) {
         return ret;
@@ -832,10 +829,6 @@ int parser_parse(struct parser *parser, struct ast_node **root_out) {
     }
 
     *root_out = root;
-
-    clock_t end = clock();
-    double parse_time = (double) (end - start) / CLOCKS_PER_SEC;
-    fprintf(stderr, "parsing took %f seconds\n", parse_time);
 
     return 0;
 }

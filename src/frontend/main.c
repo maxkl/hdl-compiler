@@ -2,8 +2,13 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
+
 #include "parser.h"
 #include "analyzer.h"
+
+#define TIME_START(name) clock_t start_time_ ## name = clock()
+#define TIME_END(name) clock_t end_time_ ## name = clock(); fprintf(stderr, # name ": %f ms\n", (double) (end_time_ ## name - start_time_ ## name) / CLOCKS_PER_SEC * 1000.0)
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -39,8 +44,12 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    TIME_START(parsing);
+
     struct ast_node *ast_root;
     int parser_ret = parser_parse(parser, &ast_root);
+
+    TIME_END(parsing);
 
     // We're done with the parser, the lexer and the source file
     parser_destroy(parser);
@@ -56,7 +65,11 @@ int main(int argc, char **argv) {
 
     ast_print_node(ast_root);
 
+    TIME_START(semantic_analysis);
+
     int analyze_ret = analyzer_analyze(ast_root);
+
+    TIME_END(semantic_analysis);
 
     ast_destroy_node(ast_root);
 
