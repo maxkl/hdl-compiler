@@ -16,18 +16,15 @@ static const char *ast_node_type_names[] = {
     "AST_BLOCK",
     "AST_DECLARATIONS",
     "AST_DECLARATION",
-    "AST_DECLARATION_IDENTIFIER_LIST",
-    "AST_DECLARATION_IDENTIFIER",
-    "AST_DECLARATION_WIDTH",
-    "AST_TYPE_IN",
-    "AST_TYPE_OUT",
-    "AST_TYPE_BLOCK",
+    "AST_IDENTIFIER_LIST",
+    "AST_TYPE",
+    "AST_TYPE_SPECIFIER_IN",
+    "AST_TYPE_SPECIFIER_OUT",
+    "AST_TYPE_SPECIFIER_BLOCK",
     "AST_BEHAVIOUR_STATEMENTS",
     "AST_BEHAVIOUR_STATEMENT",
     "AST_BEHAVIOUR_IDENTIFIER",
-    "AST_DOTTED_IDENTIFIER",
     "AST_SUBSCRIPT",
-    "AST_SUBSCRIPT_RANGE",
 
     "AST_BINARY_EXPRESSION",
     "AST_UNARY_EXPRESSION"
@@ -87,6 +84,9 @@ static void print_node(struct ast_node *node, unsigned level) {
             case AST_BINARY_EXPRESSION:
             case AST_UNARY_EXPRESSION:
                 printf(" %s", ast_op_names[node->data.op]);
+                break;
+            case AST_BLOCK:
+                printf(" (symbol table)");
                 break;
             default:
                 break;

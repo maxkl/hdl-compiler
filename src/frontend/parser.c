@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <shared/helper/mem.h>
 
@@ -47,23 +48,17 @@ static int parser_match(struct parser *parser, enum lexer_token_type type, struc
 }
 
 /*
- * blocks                           -> ( block )*
- * block                            -> 'block' identifier '{' declarations behaviour_statements '}'
- * declarations                     -> ( declaration )*
- * declaration                      -> type declaration_identifier_list ';'
- * declaration_identifier_list      -> declaration_identifier ( ',' declaration_identifier )*
- * declaration_identifier           -> identifier declaration_width
- * declaration_width                -> '[' number ']' | E
- * type                             -> type_in | type_out | type_block
- * type_in                          -> 'in'
- * type_out                         -> 'out'
- * type_block                       -> 'block' identifier
- * behaviour_statements             -> ( behaviour_statement )*
- * behaviour_statement              -> behaviour_identifier '=' expression ';'
- * behaviour_identifier             -> dotted_identifier subscript
- * dotted_identifier                -> identifier ( '.' identifier )*
- * subscript                        -> '[' number subscript_range ']' | E
- * subscript_range                  -> ':' number | E
+ * blocks               -> ( block )*
+ * block                -> 'block' identifier '{' declarations behaviour_statements '}'
+ * declarations         -> ( declaration )*
+ * declaration          -> type identifier_list ';'
+ * identifier_list      -> identifier ( ',' identifier )*
+ * type                 -> type_specifier [ '[' number ']' ]
+ * type_specifier       -> 'in' | 'out' | 'block' identifier
+ * behaviour_statements -> ( behaviour_statement )*
+ * behaviour_statement  -> behaviour_identifier '=' expression ';'
+ * behaviour_identifier -> identifier [ '.' identifier ] [ subscript ]
+ * subscript            -> '[' number [ ':' number ] ']'
  */
 
 /*
@@ -352,147 +347,95 @@ static int parse_expression(struct parser *parser, struct ast_node **node) {
     return parse_bitwise_or_expression(parser, node);
 }
 
-static int parse_subscript_range(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *number = NULL;
-
-    switch (parser->lookahead->type) {
-        case TOKEN_COLON:
-            ret = parser_match(parser, TOKEN_COLON, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_number(parser, &number);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_SUBSCRIPT_RANGE);
-            ast_add_child_node(*node, number);
-
-            break;
-        default:
-            *node = NULL;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(number);
-    return ret;
-}
-
 static int parse_subscript(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *number = NULL;
-    struct ast_node *subscript_range = NULL;
+    struct ast_node *number_start = NULL;
+    struct ast_node *number_end = NULL;
 
-    switch (parser->lookahead->type) {
-        case TOKEN_BRACKET_LEFT:
-            ret = parser_match(parser, TOKEN_BRACKET_LEFT, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_number(parser, &number);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_subscript_range(parser, &subscript_range);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parser_match(parser, TOKEN_BRACKET_RIGHT, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_SUBSCRIPT);
-            ast_add_child_node(*node, number);
-            ast_add_child_node(*node, subscript_range);
-
-            break;
-        default:
-            *node = NULL;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(number);
-    ast_destroy_node(subscript_range);
-    return ret;
-}
-
-static int parse_dotted_identifier(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *left = NULL;
-    struct ast_node *right = NULL;
-
-    ret = parse_identifier(parser, &left);
+    ret = parser_match(parser, TOKEN_BRACKET_LEFT, NULL);
     if (ret) {
         goto err;
     }
 
-    while (parser->lookahead->type == TOKEN_DOT) {
-        ret = parser_match(parser, TOKEN_DOT, NULL);
-        if (ret) {
-            goto err;
-        }
-
-        ret = parse_identifier(parser, &right);
-        if (ret) {
-            goto err;
-        }
-
-        struct ast_node *new_left = ast_create_node(AST_DOTTED_IDENTIFIER);
-        ast_add_child_node(new_left, left);
-        ast_add_child_node(new_left, right);
-
-        left = new_left;
-        right = NULL;
+    ret = parse_number(parser, &number_start);
+    if (ret) {
+        goto err;
     }
 
-    *node = left;
+    // Optional end index
+    if (parser->lookahead->type == TOKEN_COLON) {
+        ret = parser_match(parser, TOKEN_COLON, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_number(parser, &number_end);
+        if (ret) {
+            goto err;
+        }
+    }
+
+    ret = parser_match(parser, TOKEN_BRACKET_RIGHT, NULL);
+    if (ret) {
+        goto err;
+    }
+
+    *node = ast_create_node(AST_SUBSCRIPT);
+    ast_add_child_node(*node, number_start);
+    ast_add_child_node(*node, number_end);
 
     return 0;
 
 err:
-    ast_destroy_node(left);
-    ast_destroy_node(right);
+    ast_destroy_node(number_start);
+    ast_destroy_node(number_end);
     return ret;
 }
 
 static int parse_behaviour_identifier(struct parser *parser, struct ast_node **node) {
     int ret;
 
-    struct ast_node *dotted_identifier = NULL;
+    struct ast_node *identifier = NULL;
+    struct ast_node *property_identifier = NULL;
     struct ast_node *subscript = NULL;
 
-    ret = parse_dotted_identifier(parser, &dotted_identifier);
+    ret = parse_identifier(parser, &identifier);
     if (ret) {
         goto err;
     }
 
-    ret = parse_subscript(parser, &subscript);
-    if (ret) {
-        goto err;
+    // Optional property access
+    if (parser->lookahead->type == TOKEN_DOT) {
+        ret = parser_match(parser, TOKEN_DOT, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_identifier(parser, &property_identifier);
+        if (ret) {
+            goto err;
+        }
+    }
+
+    // Optional subscript
+    if (parser->lookahead->type == TOKEN_BRACKET_LEFT) {
+        ret = parse_subscript(parser, &subscript);
+        if (ret) {
+            goto err;
+        }
     }
 
     *node = ast_create_node(AST_BEHAVIOUR_IDENTIFIER);
-    ast_add_child_node(*node, dotted_identifier);
+    ast_add_child_node(*node, identifier);
+    ast_add_child_node(*node, property_identifier);
     ast_add_child_node(*node, subscript);
 
     return 0;
 
 err:
-    ast_destroy_node(dotted_identifier);
+    ast_destroy_node(identifier);
+    ast_destroy_node(property_identifier);
     ast_destroy_node(subscript);
     return ret;
 }
@@ -547,9 +490,15 @@ static int parse_behaviour_statements(struct parser *parser, struct ast_node **n
             goto err;
         }
 
-        struct ast_node *new_behaviour_statements = ast_create_node(AST_BEHAVIOUR_STATEMENTS);
-        ast_add_child_node(new_behaviour_statements, behaviour_statements);
-        ast_add_child_node(new_behaviour_statements, behaviour_statement);
+        struct ast_node *new_behaviour_statements;
+
+        if (behaviour_statements == NULL) {
+            new_behaviour_statements = behaviour_statement;
+        } else {
+            new_behaviour_statements = ast_create_node(AST_BEHAVIOUR_STATEMENTS);
+            ast_add_child_node(new_behaviour_statements, behaviour_statements);
+            ast_add_child_node(new_behaviour_statements, behaviour_statement);
+        }
 
         behaviour_statements = new_behaviour_statements;
         behaviour_statement = NULL;
@@ -565,131 +514,13 @@ err:
     return ret;
 }
 
-static int parse_type(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *identifier = NULL;
-
-    switch (parser->lookahead->type) {
-        case TOKEN_KEYWORD_IN:
-            ret = parser_match(parser, TOKEN_KEYWORD_IN, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_TYPE_IN);
-
-            break;
-        case TOKEN_KEYWORD_OUT:
-            ret = parser_match(parser, TOKEN_KEYWORD_OUT, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_TYPE_OUT);
-
-            break;
-        case TOKEN_KEYWORD_BLOCK:
-            ret = parser_match(parser, TOKEN_KEYWORD_BLOCK, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_identifier(parser, &identifier);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_TYPE_BLOCK);
-            ast_add_child_node(*node, identifier);
-
-            break;
-        default:
-            lexer_print_location(stderr, parser->lookahead->location);
-            fprintf(stderr, ": Expected type\n");
-            ret = -1;
-            goto err;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(identifier);
-    return ret;
-}
-
-static int parse_declaration_width(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *number = NULL;
-
-    switch (parser->lookahead->type) {
-        case TOKEN_BRACKET_LEFT:
-            ret = parser_match(parser, TOKEN_BRACKET_LEFT, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parse_number(parser, &number);
-            if (ret) {
-                goto err;
-            }
-
-            ret = parser_match(parser, TOKEN_BRACKET_RIGHT, NULL);
-            if (ret) {
-                goto err;
-            }
-
-            *node = ast_create_node(AST_DECLARATION_WIDTH);
-            ast_add_child_node(*node, number);
-
-            break;
-        default:
-            *node = NULL;
-    }
-
-    return 0;
-
-err:
-    ast_destroy_node(number);
-    return ret;
-}
-
-static int parse_declaration_identifier(struct parser *parser, struct ast_node **node) {
-    int ret;
-
-    struct ast_node *identifier = NULL;
-    struct ast_node *declaration_width = NULL;
-
-    ret = parse_identifier(parser, &identifier);
-    if (ret) {
-        goto err;
-    }
-
-    ret = parse_declaration_width(parser, &declaration_width);
-    if (ret) {
-        goto err;
-    }
-
-    *node = ast_create_node(AST_DECLARATION_IDENTIFIER);
-    ast_add_child_node(*node, identifier);
-    ast_add_child_node(*node, declaration_width);
-
-    return 0;
-
-err:
-    ast_destroy_node(identifier);
-    ast_destroy_node(declaration_width);
-    return ret;
-}
-
-static int parse_declaration_identifier_list(struct parser *parser, struct ast_node **node) {
+static int parse_identifier_list(struct parser *parser, struct ast_node **node) {
     int ret;
 
     struct ast_node *left = NULL;
     struct ast_node *right = NULL;
 
-    ret = parse_declaration_identifier(parser, &left);
+    ret = parse_identifier(parser, &left);
     if (ret) {
         goto err;
     }
@@ -700,12 +531,12 @@ static int parse_declaration_identifier_list(struct parser *parser, struct ast_n
             goto err;
         }
 
-        ret = parse_declaration_identifier(parser, &right);
+        ret = parse_identifier(parser, &right);
         if (ret) {
             goto err;
         }
 
-        struct ast_node *new_left = ast_create_node(AST_DECLARATION_IDENTIFIER_LIST);
+        struct ast_node *new_left = ast_create_node(AST_IDENTIFIER_LIST);
         ast_add_child_node(new_left, left);
         ast_add_child_node(new_left, right);
 
@@ -723,18 +554,112 @@ err:
     return ret;
 }
 
+static int parse_type_specifier(struct parser *parser, struct ast_node **node) {
+    int ret;
+
+    struct ast_node *identifier = NULL;
+
+    switch (parser->lookahead->type) {
+        case TOKEN_KEYWORD_IN:
+            ret = parser_match(parser, TOKEN_KEYWORD_IN, NULL);
+            if (ret) {
+                goto err;
+            }
+
+            *node = ast_create_node(AST_TYPE_SPECIFIER_IN);
+
+            break;
+        case TOKEN_KEYWORD_OUT:
+            ret = parser_match(parser, TOKEN_KEYWORD_OUT, NULL);
+            if (ret) {
+                goto err;
+            }
+
+            *node = ast_create_node(AST_TYPE_SPECIFIER_OUT);
+
+            break;
+        case TOKEN_KEYWORD_BLOCK:
+            ret = parser_match(parser, TOKEN_KEYWORD_BLOCK, NULL);
+            if (ret) {
+                goto err;
+            }
+
+            ret = parse_identifier(parser, &identifier);
+            if (ret) {
+                goto err;
+            }
+
+            *node = ast_create_node(AST_TYPE_SPECIFIER_BLOCK);
+            ast_add_child_node(*node, identifier);
+
+            break;
+        default:
+            lexer_print_location(stderr, parser->lookahead->location);
+            fprintf(stderr, ": Expected type\n");
+            ret = -1;
+            goto err;
+    }
+
+    return 0;
+
+err:
+    ast_destroy_node(identifier);
+    return ret;
+}
+
+static int parse_type(struct parser *parser, struct ast_node **node) {
+    int ret;
+
+    struct ast_node *type_specifier = NULL;
+    struct ast_node *number = NULL;
+
+    ret = parse_type_specifier(parser, &type_specifier);
+    if (ret) {
+        goto err;
+    }
+
+    // Optional type width
+    if (parser->lookahead->type == TOKEN_BRACKET_LEFT) {
+        ret = parser_match(parser, TOKEN_BRACKET_LEFT, NULL);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parse_number(parser, &number);
+        if (ret) {
+            goto err;
+        }
+
+        ret = parser_match(parser, TOKEN_BRACKET_RIGHT, NULL);
+        if (ret) {
+            goto err;
+        }
+    }
+
+    *node = ast_create_node(AST_TYPE);
+    ast_add_child_node(*node, type_specifier);
+    ast_add_child_node(*node, number);
+
+    return 0;
+
+err:
+    ast_destroy_node(type_specifier);
+    ast_destroy_node(number);
+    return ret;
+}
+
 static int parse_declaration(struct parser *parser, struct ast_node **node) {
     int ret;
 
     struct ast_node *type = NULL;
-    struct ast_node *declaration_identifier_list = NULL;
+    struct ast_node *identifier_list = NULL;
 
     ret = parse_type(parser, &type);
     if (ret) {
         goto err;
     }
 
-    ret = parse_declaration_identifier_list(parser, &declaration_identifier_list);
+    ret = parse_identifier_list(parser, &identifier_list);
     if (ret) {
         goto err;
     }
@@ -746,13 +671,13 @@ static int parse_declaration(struct parser *parser, struct ast_node **node) {
 
     *node = ast_create_node(AST_DECLARATION);
     ast_add_child_node(*node, type);
-    ast_add_child_node(*node, declaration_identifier_list);
+    ast_add_child_node(*node, identifier_list);
 
     return 0;
 
 err:
     ast_destroy_node(type);
-    ast_destroy_node(declaration_identifier_list);
+    ast_destroy_node(identifier_list);
     return ret;
 }
 
@@ -771,9 +696,15 @@ static int parse_declarations(struct parser *parser, struct ast_node **node) {
             goto err;
         }
 
-        struct ast_node *new_declarations = ast_create_node(AST_DECLARATIONS);
-        ast_add_child_node(new_declarations, declarations);
-        ast_add_child_node(new_declarations, declaration);
+        struct ast_node *new_declarations;
+
+        if (declarations == NULL) {
+            new_declarations = declaration;
+        } else {
+            new_declarations = ast_create_node(AST_DECLARATIONS);
+            ast_add_child_node(new_declarations, declarations);
+            ast_add_child_node(new_declarations, declaration);
+        }
 
         declarations = new_declarations;
         declaration = NULL;
@@ -852,9 +783,15 @@ static int parse_blocks(struct parser *parser, struct ast_node **node) {
             goto err;
         }
 
-        struct ast_node *new_blocks = ast_create_node(AST_BLOCKS);
-        ast_add_child_node(new_blocks, blocks);
-        ast_add_child_node(new_blocks, block);
+        struct ast_node *new_blocks;
+
+        if (blocks == NULL) {
+            new_blocks = block;
+        } else {
+            new_blocks = ast_create_node(AST_BLOCKS);
+            ast_add_child_node(new_blocks, blocks);
+            ast_add_child_node(new_blocks, block);
+        }
 
         blocks = new_blocks;
         block = NULL;
@@ -872,6 +809,8 @@ err:
 
 int parser_parse(struct parser *parser, struct ast_node **root_out) {
     int ret;
+
+    clock_t start = clock();
 
     ret = parser_read_lookahead(parser);
     if (ret) {
@@ -893,6 +832,10 @@ int parser_parse(struct parser *parser, struct ast_node **root_out) {
     }
 
     *root_out = root;
+
+    clock_t end = clock();
+    double parse_time = (double) (end - start) / CLOCKS_PER_SEC;
+    fprintf(stderr, "parsing took %f seconds\n", parse_time);
 
     return 0;
 }

@@ -1,7 +1,9 @@
 
 block alu {
-    in a[4], b[4], c_in;
-    out s[4], c_out;
+    in[4] a, b;
+    in c_in;
+    out[4] s;
+    out c_out;
     block adder adder0, adder1, adder2, adder3;
 
     adder0.a = a[0];

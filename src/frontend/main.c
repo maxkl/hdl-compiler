@@ -3,11 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "parser.h"
-
-int analyze(struct ast_node *ast_root) {
-    // TODO
-    return 0;
-}
+#include "analyzer.h"
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -60,7 +56,7 @@ int main(int argc, char **argv) {
 
     ast_print_node(ast_root);
 
-    int analyze_ret = analyze(ast_root);
+    int analyze_ret = analyzer_analyze(ast_root);
 
     ast_destroy_node(ast_root);
 

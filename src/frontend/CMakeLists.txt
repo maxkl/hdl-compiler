@@ -7,5 +7,11 @@ add_executable(frontend
 	"parser.h"
 	"ast.c"
 	"ast.h"
+	"symbol.c"
+	"symbol.h"
+	"symbol_table.c"
+	"symbol_table.h"
+	"analyzer.c"
+	"analyzer.h"
 )
 target_link_libraries(frontend shared)
