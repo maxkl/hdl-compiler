@@ -2,16 +2,36 @@
 #include "analyzer.h"
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "ast.h"
 #include "symbol_table.h"
 
 #include <shared/helper/mem.h>
 
-static int analyze_expression(struct symbol_table *symbol_table, struct ast_node *expression);
-static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struct ast_node *behaviour_identifier);
+enum expression_type_access_type {
+	EXPRESSION_TYPE_READ,
+	EXPRESSION_TYPE_WRITE
+};
 
-static int analyze_binary_expression(struct symbol_table *symbol_table, struct ast_node *expression) {
+struct expression_type {
+	enum expression_type_access_type access_type;
+	uint64_t width;
+};
+
+bool expression_type_matches(struct expression_type *a, struct expression_type *b) {
+	return a->access_type == b->access_type && a->width == b->width;
+}
+
+void expression_type_copy(struct expression_type *target, struct expression_type *source) {
+	target->access_type = source->access_type;
+	target->width = source->width;
+}
+
+static int analyze_expression(struct symbol_table *symbol_table, struct ast_node *expression, struct expression_type *type);
+static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struct ast_node *behaviour_identifier, struct expression_type *type);
+
+static int analyze_binary_expression(struct symbol_table *symbol_table, struct ast_node *expression, struct expression_type *type) {
 	int ret;
 
 	if (expression->type != AST_BINARY_EXPRESSION) {
@@ -22,11 +42,18 @@ static int analyze_binary_expression(struct symbol_table *symbol_table, struct a
 		return -1;
 	}
 
+	struct expression_type type_a, type_b;
+
 	printf("(");
 
-	ret = analyze_expression(symbol_table, expression->children[0]);
+	ret = analyze_expression(symbol_table, expression->children[0], &type_a);
 	if (ret) {
 		return ret;
+	}
+
+	if (type_a.access_type != EXPRESSION_TYPE_READ) {
+		fprintf(stderr, "Write-only signal used as source operand\n");
+		return -1;
 	}
 
 	switch (expression->data.op) {
@@ -43,17 +70,29 @@ static int analyze_binary_expression(struct symbol_table *symbol_table, struct a
 			return -1;
 	}
 
-	ret = analyze_expression(symbol_table, expression->children[1]);
+	ret = analyze_expression(symbol_table, expression->children[1], &type_b);
 	if (ret) {
 		return ret;
 	}
 
+	if (type_b.access_type != EXPRESSION_TYPE_READ) {
+		fprintf(stderr, "Write-only signal used as source operand\n");
+		return -1;
+	}
+
 	printf(")");
+
+	if (!expression_type_matches(&type_a, &type_b)) {
+		fprintf(stderr, "Operand types of binary expression don't match\n");
+		return -1;
+	}
+
+	expression_type_copy(type, &type_a);
 
 	return 0;
 }
 
-static int analyze_unary_expression(struct symbol_table *symbol_table, struct ast_node *expression) {
+static int analyze_unary_expression(struct symbol_table *symbol_table, struct ast_node *expression, struct expression_type *type) {
 		int ret;
 
 	if (expression->type != AST_UNARY_EXPRESSION) {
@@ -74,9 +113,14 @@ static int analyze_unary_expression(struct symbol_table *symbol_table, struct as
 			return -1;
 	}
 
-	ret = analyze_expression(symbol_table, expression->children[0]);
+	ret = analyze_expression(symbol_table, expression->children[0], type);
 	if (ret) {
 		return ret;
+	}
+
+	if (type->access_type != EXPRESSION_TYPE_READ) {
+		fprintf(stderr, "Write-only signal used as source operand\n");
+		return -1;
 	}
 
 	printf(")");
@@ -84,15 +128,29 @@ static int analyze_unary_expression(struct symbol_table *symbol_table, struct as
 	return 0;
 }
 
-static int analyze_expression(struct symbol_table *symbol_table, struct ast_node *expression) {
+static int analyze_expression(struct symbol_table *symbol_table, struct ast_node *expression, struct expression_type *type) {
+	int ret;
+
 	switch (expression->type) {
 		case AST_BINARY_EXPRESSION:
-			return analyze_binary_expression(symbol_table, expression);
+			return analyze_binary_expression(symbol_table, expression, type);
 		case AST_UNARY_EXPRESSION:
-			return analyze_unary_expression(symbol_table, expression);
+			return analyze_unary_expression(symbol_table, expression, type);
 		case AST_BEHAVIOUR_IDENTIFIER:
-			return analyze_behaviour_identifier(symbol_table, expression);
+			ret = analyze_behaviour_identifier(symbol_table, expression, type);
+			if (ret) {
+				return ret;
+			}
+
+			if (type->access_type != EXPRESSION_TYPE_READ) {
+				fprintf(stderr, "Write-only signal used as source operand\n");
+				return -1;
+			}
+
+			return 0;
 		case AST_NUMBER:
+			type->access_type = EXPRESSION_TYPE_READ;
+			type->width = 64;
 			printf("%lu", expression->data.number);
 			return 0;
 		default:
@@ -111,33 +169,37 @@ static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node 
 		return -1;
 	}
 
-	printf("[");
+	uint64_t start_index, end_index;
 
-	struct ast_node *start_index = subscript->children[0];
-    if (start_index->type != AST_NUMBER) {
+	struct ast_node *start_number = subscript->children[0];
+    if (start_number->type != AST_NUMBER) {
         return -1;
     }
 
-    printf("%lu", start_index->data.number);
+    start_index = start_number->data.number;
 
-    struct ast_node *end_index = subscript->children[1];
-    if (end_index == NULL) {
-    	// TODO
+    struct ast_node *end_number = subscript->children[1];
+    if (end_number == NULL) {
+    	end_index = start_index;
     } else {
-	    if (end_index->type != AST_NUMBER) {
+	    if (end_number->type != AST_NUMBER) {
 	        return -1;
 	    }
 
-	    // TODO
-	    printf(":%lu", end_index->data.number);
+    	end_index = end_number->data.number;
 	}
 
-	printf("]");
+	if (end_index > start_index) {
+		fprintf(stderr, "Invalid subscript range: end before start\n");
+		return -1;
+	}
+
+	printf("[%lu:%lu]", start_index, end_index);
 
 	return 0;
 }
 
-static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struct ast_node *behaviour_identifier) {
+static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struct ast_node *behaviour_identifier, struct expression_type *type) {
 	int ret;
 
     if (behaviour_identifier->type != AST_BEHAVIOUR_IDENTIFIER) {
@@ -153,28 +215,62 @@ static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struc
         return -1;
     }
 
-    printf("%s", identifier->data.identifier);
+    char *signal_name = identifier->data.identifier;
+    struct symbol *symbol = symbol_table_find_recursive(symbol_table, signal_name);
+
+    if (symbol == NULL) {
+    	fprintf(stderr, "Use of undeclared identifier \"%s\"\n", signal_name);
+    	return -1;
+    }
+
+    struct symbol_type *symbol_type = symbol->type;
+
+    printf("((");
+    symbol_type_print(stdout, symbol_type);
+    printf(") %s)", signal_name);
 
     struct ast_node *property_identifier = behaviour_identifier->children[1];
     if (property_identifier == NULL) {
-    	// TODO
+    	//
     } else {
     	if (property_identifier->type != AST_IDENTIFIER) {
         	return -1;
         }
 
-        // TODO
     	printf(".%s", property_identifier->data.identifier);
+
+    	if (symbol_type->type != SYMBOL_TYPE_BLOCK) {
+    		fprintf(stderr, "Property access on signal\n");
+    		return -1;
+    	}
+
+    	fprintf(stderr, "Property access not supported\n");
+    	return -1;
+    }
+
+    switch (symbol_type->type) {
+    	case SYMBOL_TYPE_IN:
+    		type->access_type = EXPRESSION_TYPE_READ;
+    		break;
+    	case SYMBOL_TYPE_OUT:
+    		type->access_type = EXPRESSION_TYPE_WRITE;
+    		break;
+    	case SYMBOL_TYPE_BLOCK:
+    		fprintf(stderr, "Block used as signal\n");
+    		return -1;
     }
 
     struct ast_node *subscript = behaviour_identifier->children[2];
     if (subscript == NULL) {
-    	// TODO
+    	type->width = symbol_type->width;
     } else {
 	    ret = analyze_subscript(symbol_table, subscript);
 	    if (ret) {
 	        return ret;
 	    }
+
+	    fprintf(stderr, "Subscript not supported\n");
+    	return -1;
 	}
 
 	return 0;
@@ -191,19 +287,38 @@ static int analyze_behaviour_statement(struct symbol_table *symbol_table, struct
         return -1;
     }
 
-    ret = analyze_behaviour_identifier(symbol_table, behaviour_statement->children[0]);
+    struct expression_type target_type;
+
+    ret = analyze_behaviour_identifier(symbol_table, behaviour_statement->children[0], &target_type);
     if (ret) {
         return ret;
+    }
+
+    if (target_type.access_type != EXPRESSION_TYPE_WRITE) {
+    	fprintf(stderr, "Read-only signal used as target operand\n");
+    	return -1;
     }
 
     printf(" = ");
 
-    ret = analyze_expression(symbol_table, behaviour_statement->children[1]);
+    struct expression_type source_type;
+
+    ret = analyze_expression(symbol_table, behaviour_statement->children[1], &source_type);
     if (ret) {
         return ret;
     }
 
+    if (source_type.access_type != EXPRESSION_TYPE_READ) {
+    	fprintf(stderr, "Write-only signal used as source operand\n");
+    	return -1;
+    }
+
     printf(";\n");
+
+    if (target_type.width != source_type.width) {
+		fprintf(stderr, "Operand types of assignment expression don't match\n");
+		return -1;
+	}
 
     return 0;
 }
