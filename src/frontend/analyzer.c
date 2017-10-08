@@ -250,10 +250,12 @@ static int analyze_declaration_identifier(struct symbol_table *symbol_table, str
 		return -1;
 	}
 
-	symbol_table_add(symbol_table, symbol_create(name, symbol_type));
+	struct symbol *symbol = symbol_create(name, symbol_type);
 
-	printf("Symbol table:\n");
-	symbol_table_print(stdout, symbol_table);
+	symbol_print(stdout, symbol);
+	printf(";\n");
+
+	symbol_table_add(symbol_table, symbol);
 
 	return 0;
 }
@@ -364,8 +366,6 @@ static int analyze_declaration(struct symbol_table *symbol_table, struct ast_nod
     if (ret) {
     	return ret;
     }
-
-    printf("decl, %i, %lu, %s\n", symbol_type->type, symbol_type->width, symbol_type->data.block_name);
 
     ret = analyze_declaration_identifier_list(symbol_table, declaration->children[1], symbol_type);
     symbol_type_destroy(symbol_type);
