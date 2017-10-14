@@ -102,12 +102,12 @@ struct string_table {
     char *buffer;
 };
 
-uint32_t string_table_add(struct string_table *st, const char *str) {
+uint32_t string_table_add(struct string_table *string_table, const char *str) {
     size_t len = strlen(str) + 1;
-    st->buffer = xrealloc(st->buffer, st->size + len);
-    strcpy(st->buffer + st->size, str);
-    st->size += len;
-    return st->count++;
+    string_table->buffer = xrealloc(string_table->buffer, string_table->size + len);
+    strcpy(string_table->buffer + string_table->size, str);
+    string_table->size += len;
+    return string_table->count++;
 }
 
 enum error parse_string_table(uint8_t *buffer, uint32_t size, char ***string_table_out, size_t *string_count_out) {
@@ -143,7 +143,7 @@ enum error parse_string_table(uint8_t *buffer, uint32_t size, char ***string_tab
     return ERROR_OK;
 }
 
-enum error parse_block_statement(FILE *f) {
+enum error parse_block_statement(FILE *f, struct intermediate_statement *stmt) {
     enum error err;
 
     uint16_t op;
@@ -158,35 +158,55 @@ enum error parse_block_statement(FILE *f) {
         return err;
     }
 
-    switch (op) {
-        case INTERMEDIATE_OP_AND: {
-            log_debug("  Statement: op=AND, size=%u\n", size);
+    uint32_t input_count, output_count;
 
+    switch (op) {
+        case INTERMEDIATE_OP_CONNECT:
+            if (size != 1) {
+                log_debug("CONNECT can't have other than 1 input\n");
+                return ERROR_FAIL;
+            }
+
+            input_count = 1;
+            output_count = 1;
+            break;
+        case INTERMEDIATE_OP_AND:
             if (size < 2) {
                 log_debug("AND can't have %u inputs\n", size);
                 return ERROR_FAIL;
             }
 
-            for (uint32_t i = 0; i < size; i++) {
-                uint32_t input_id;
-                err = file_read_32(f, &input_id);
-                if (err) {
-                    return err;
-                }
-
-                log_debug("    Input: id=%u\n", input_id);
-            }
-
-            uint32_t output_id;
-            err = file_read_32(f, &output_id);
-            if (err) {
-                return err;
-            }
-
-            log_debug("    Output: id=%u\n", output_id);
+            input_count = size;
+            output_count = 1;
             break;
-        }
-        case INTERMEDIATE_OP_MUX: {
+        case INTERMEDIATE_OP_OR:
+            if (size < 2) {
+                log_debug("OR can't have %u inputs\n", size);
+                return ERROR_FAIL;
+            }
+
+            input_count = size;
+            output_count = 1;
+            break;
+        case INTERMEDIATE_OP_XOR:
+            if (size < 2) {
+                log_debug("XOR can't have %u inputs\n", size);
+                return ERROR_FAIL;
+            }
+
+            input_count = size;
+            output_count = 1;
+            break;
+        case INTERMEDIATE_OP_NOT:
+            if (size != 1) {
+                log_debug("NOT can't have other than 1 input\n");
+                return ERROR_FAIL;
+            }
+
+            input_count = 1;
+            output_count = 1;
+            break;
+        case INTERMEDIATE_OP_MUX:
             if (size == 0) {
                 log_debug("MUX must have at least 1 address input\n");
                 return ERROR_FAIL;
@@ -197,42 +217,39 @@ enum error parse_block_statement(FILE *f) {
                 return ERROR_FAIL;
             }
 
-            uint32_t input_count = 1 << size;
-
-            log_debug("  Statement: op=MUX, data inputs=%u, addr inputs=%u\n", input_count, size);
-
-            for (uint32_t i = 0; i < size; i++) {
-                uint32_t addr_input_id;
-                err = file_read_32(f, &addr_input_id);
-                if (err) {
-                    return err;
-                }
-
-                log_debug("    Address input: id=%u\n", addr_input_id);
-            }
-
-            for (uint32_t i = 0; i < input_count; i++) {
-                uint32_t input_id;
-                err = file_read_32(f, &input_id);
-                if (err) {
-                    return err;
-                }
-
-                log_debug("    Input: id=%u\n", input_id);
-            }
-
-            uint32_t output_id;
-            err = file_read_32(f, &output_id);
-            if (err) {
-                return err;
-            }
-
-            log_debug("    Output: id=%u\n", output_id);
+            input_count = (1 << size) + size;
+            output_count = 1;
             break;
-        }
         default:
             log_debug("Invalid statement op\n");
             return ERROR_FAIL;
+    }
+
+    stmt->op = op;
+    stmt->size = size;
+    stmt->input_count = input_count;
+    stmt->inputs = xcalloc(stmt->input_count, sizeof(uint32_t));
+    stmt->output_count = output_count;
+    stmt->outputs = xcalloc(stmt->output_count, sizeof(uint32_t));
+
+    for (uint32_t i = 0; i < input_count; i++) {
+        uint32_t input_id;
+        err = file_read_32(f, &input_id);
+        if (err) {
+            return err;
+        }
+
+        stmt->inputs[i] = input_id;
+    }
+
+    for (uint32_t i = 0; i < output_count; i++) {
+        uint32_t output_id;
+        err = file_read_32(f, &output_id);
+        if (err) {
+            return err;
+        }
+
+        stmt->outputs[i] = output_id;
     }
 
     return ERROR_OK;
@@ -268,7 +285,7 @@ enum error write_block_statement(FILE *f, struct intermediate_statement *stateme
     return ERROR_OK;
 }
 
-enum error parse_block(FILE *f) {
+enum error parse_block(FILE *f, struct intermediate_block *block) {
     enum error err;
 
     uint32_t input_count;
@@ -295,7 +312,13 @@ enum error parse_block(FILE *f) {
         return err;
     }
 
-    log_debug("Block: name=%u, inputs=%u, outputs=%u, statements=%u\n", name_index, input_count, output_count, statement_count);
+    block->name_index = name_index;
+    block->input_count = input_count;
+    block->inputs = xcalloc(block->input_count, sizeof(struct intermediate_input));
+    block->output_count = output_count;
+    block->outputs = xcalloc(block->output_count, sizeof(struct intermediate_output));
+    block->statement_count = statement_count;
+    block->statements = xcalloc(block->statement_count, sizeof(struct intermediate_statement));
 
     uint32_t signal_id = 0;
 
@@ -312,9 +335,10 @@ enum error parse_block(FILE *f) {
             return err;
         }
 
-        log_debug("  Input: name=%u, width=%u, id=%u\n", input_name_index, input_width, signal_id);
+        block->inputs[i].name_index = input_name_index;
+        block->inputs[i].width = input_width;
 
-        signal_id++;
+        signal_id += input_width;
     }
 
     for (uint32_t i = 0; i < output_count; i++) {
@@ -330,13 +354,16 @@ enum error parse_block(FILE *f) {
             return err;
         }
 
-        log_debug("  Output: name=%u, width=%u, id=%u\n", output_name_index, output_width, signal_id);
+        block->outputs[i].name_index = output_name_index;
+        block->outputs[i].width = output_width;
 
-        signal_id++;
+        signal_id += output_width;
     }
 
+    block->next_signal = 123456;
+
     for (uint32_t i = 0; i < statement_count; i++) {
-        err = parse_block_statement(f);
+        err = parse_block_statement(f, &block->statements[i]);
         if (err) {
             return err;
         }
@@ -345,7 +372,7 @@ enum error parse_block(FILE *f) {
     return ERROR_OK;
 }
 
-enum error write_block(FILE *f, struct intermediate_block *block) {
+enum error write_block(FILE *f, struct intermediate_block *block, struct string_table *string_table) {
     enum error err;
 
     err = file_write_32(f, block->input_count);
@@ -363,7 +390,7 @@ enum error write_block(FILE *f, struct intermediate_block *block) {
         return err;
     }
 
-    err = file_write_32(f, 42);
+    err = file_write_32(f, string_table_add(string_table, block->name));
     if (err) {
         return err;
     }
@@ -371,7 +398,7 @@ enum error write_block(FILE *f, struct intermediate_block *block) {
     for (uint32_t i = 0; i < block->input_count; i++) {
         struct intermediate_input *input = &block->inputs[i];
 
-        err = file_write_32(f, 42);
+        err = file_write_32(f, string_table_add(string_table, input->name));
         if (err) {
             return err;
         }
@@ -385,7 +412,7 @@ enum error write_block(FILE *f, struct intermediate_block *block) {
     for (uint32_t i = 0; i < block->output_count; i++) {
         struct intermediate_output *output = &block->outputs[i];
 
-        err = file_write_32(f, 42);
+        err = file_write_32(f, string_table_add(string_table, output->name));
         if (err) {
             return err;
         }
@@ -406,7 +433,7 @@ enum error write_block(FILE *f, struct intermediate_block *block) {
     return ERROR_OK;
 }
 
-enum error parse_blocks(FILE *f) {
+enum error parse_blocks(FILE *f, struct intermediate_block ***blocks_out, uint32_t *block_count_out) {
     enum error err;
 
     uint32_t block_count;
@@ -415,19 +442,26 @@ enum error parse_blocks(FILE *f) {
         return err;
     }
 
-    log_debug("%u blocks\n", block_count);
+    struct intermediate_block **blocks = xcalloc(block_count, sizeof(struct intermediate_block *));
 
     for (uint32_t i = 0; i < block_count; i++) {
-        err = parse_block(f);
+        struct intermediate_block *block = xcalloc(1, sizeof(struct intermediate_block));
+
+        err = parse_block(f, block);
         if (err) {
             return err;
         }
+
+        blocks[i] = block;
     }
+
+    *blocks_out = blocks;
+    *block_count_out = block_count;
 
     return ERROR_OK;
 }
 
-enum error write_blocks(FILE *f, struct intermediate_block **blocks, uint32_t block_count) {
+enum error write_blocks(FILE *f, struct intermediate_block **blocks, uint32_t block_count, struct string_table *string_table) {
     enum error err;
 
     err = file_write_32(f, block_count);
@@ -436,7 +470,7 @@ enum error write_blocks(FILE *f, struct intermediate_block **blocks, uint32_t bl
     }
 
     for (uint32_t i = 0; i < block_count; i++) {
-        err = write_block(f, blocks[i]);
+        err = write_block(f, blocks[i], string_table);
         if (err) {
             return err;
         }
@@ -445,7 +479,7 @@ enum error write_blocks(FILE *f, struct intermediate_block **blocks, uint32_t bl
     return ERROR_OK;
 }
 
-enum error parse_file(FILE *f) {
+enum error parse_file(FILE *f, struct intermediate_block ***blocks_out, uint32_t *block_count_out) {
     enum error err;
 
     // Check magic
@@ -466,12 +500,15 @@ enum error parse_file(FILE *f) {
     if (err) {
         return err;
     }
-    log_debug("Version: %u\n", version);
+
     if (version > INTERMEDIATE_FILE_VERSION) {
         return ERROR_INCOMPATIBLE_VERSION;
     }
 
-    err = parse_blocks(f);
+    struct intermediate_block **blocks;
+    uint32_t block_count;
+
+    err = parse_blocks(f, &blocks, &block_count);
     if (err) {
         return err;
     }
@@ -495,13 +532,42 @@ enum error parse_file(FILE *f) {
         return err;
     }
 
-    for (size_t i = 0; i < string_count; i++) {
-        log_debug("String %lu: %s\n", i, string_table[i]);
+    for (uint32_t i = 0; i < block_count; i++) {
+        struct intermediate_block *block = blocks[i];
+
+        if (block->name_index >= string_count) {
+            return ERROR_FAIL;
+        }
+
+        block->name = string_table[block->name_index];
+
+        for (size_t j = 0; j < block->input_count; j++) {
+            struct intermediate_input *input = &block->inputs[j];
+
+            if (input->name_index >= string_count) {
+                return ERROR_FAIL;
+            }
+
+            input->name = string_table[input->name_index];
+        }
+
+        for (size_t j = 0; j < block->output_count; j++) {
+            struct intermediate_output *output = &block->outputs[j];
+
+            if (output->name_index >= string_count) {
+                return ERROR_FAIL;
+            }
+
+            output->name = string_table[output->name_index];
+        }
     }
 
     if (fgetc(f) != EOF) {
         return ERROR_JUNK_AT_END;
     }
+
+    *blocks_out = blocks;
+    *block_count_out = block_count;
 
     return ERROR_OK;
 }
@@ -521,31 +587,29 @@ enum error write_file(FILE *f, struct intermediate_block **blocks, uint32_t bloc
         return err;
     }
 
-    struct string_table *st = xcalloc(1, sizeof(struct string_table));
-    uint32_t id = string_table_add(st, "peter");
-    log_debug("Added \"peter\" as %u\n", id);
-    id = string_table_add(st, "horst");
-    log_debug("Added \"horst\" as %u\n", id);
+    struct string_table *string_table = xcalloc(1, sizeof(struct string_table));
 
-    err = write_blocks(f, blocks, block_count);
+    err = write_blocks(f, blocks, block_count, string_table);
     if (err) {
         return err;
     }
 
-    err = file_write_32(f, st->size);
+    err = file_write_32(f, string_table->size);
     if (err) {
         return err;
     }
 
-    err = file_write_buffer(f, (uint8_t *) st->buffer, st->size);
+    err = file_write_buffer(f, (uint8_t *) string_table->buffer, string_table->size);
     if (err) {
         return err;
     }
+
+    xfree(string_table);
 
     return ERROR_OK;
 }
 
-int intermediate_file_read(const char *filename) {
+int intermediate_file_read(const char *filename, struct intermediate_block ***blocks, uint32_t *block_count) {
     enum error err;
 
     FILE *f = fopen(filename, "rb");
@@ -554,7 +618,7 @@ int intermediate_file_read(const char *filename) {
         return ERROR_FAIL;
     }
 
-    err = parse_file(f);
+    err = parse_file(f, blocks, block_count);
     switch (err) {
         case ERROR_OK:
             break;

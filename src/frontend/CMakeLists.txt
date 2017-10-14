@@ -13,5 +13,9 @@ add_executable(frontend
 	"symbol_table.h"
 	"analyzer.c"
 	"analyzer.h"
+	"intermediate_generator.c"
+	"intermediate_generator.h"
+	"expression_type.c"
+	"expression_type.h"
 )
 target_link_libraries(frontend shared)

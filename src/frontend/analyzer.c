@@ -6,27 +6,9 @@
 
 #include "ast.h"
 #include "symbol_table.h"
+#include "expression_type.h"
 
 #include <shared/helper/mem.h>
-
-enum expression_type_access_type {
-	EXPRESSION_TYPE_READ,
-	EXPRESSION_TYPE_WRITE
-};
-
-struct expression_type {
-	enum expression_type_access_type access_type;
-	uint64_t width;
-};
-
-bool expression_type_matches(struct expression_type *a, struct expression_type *b) {
-	return a->access_type == b->access_type && a->width == b->width;
-}
-
-void expression_type_copy(struct expression_type *target, struct expression_type *source) {
-	target->access_type = source->access_type;
-	target->width = source->width;
-}
 
 static int analyze_expression(struct symbol_table *symbol_table, struct ast_node *expression, struct expression_type *type);
 static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struct ast_node *behaviour_identifier, struct expression_type *type);
@@ -44,7 +26,7 @@ static int analyze_binary_expression(struct symbol_table *symbol_table, struct a
 
 	struct expression_type type_a, type_b;
 
-	printf("(");
+	//printf("(");
 
 	ret = analyze_expression(symbol_table, expression->children[0], &type_a);
 	if (ret) {
@@ -58,13 +40,13 @@ static int analyze_binary_expression(struct symbol_table *symbol_table, struct a
 
 	switch (expression->data.op) {
 		case AST_OP_AND:
-			printf(" & ");
+			//printf(" & ");
 			break;
 		case AST_OP_OR:
-			printf(" | ");
+			//printf(" | ");
 			break;
 		case AST_OP_XOR:
-			printf(" ^ ");
+			//printf(" ^ ");
 			break;
 		default:
 			return -1;
@@ -80,7 +62,7 @@ static int analyze_binary_expression(struct symbol_table *symbol_table, struct a
 		return -1;
 	}
 
-	printf(")");
+	//printf(")");
 
 	if (!expression_type_matches(&type_a, &type_b)) {
 		fprintf(stderr, "Operand types of binary expression don't match\n");
@@ -103,11 +85,11 @@ static int analyze_unary_expression(struct symbol_table *symbol_table, struct as
 		return -1;
 	}
 
-	printf("(");
+	//printf("(");
 
 	switch (expression->data.op) {
 		case AST_OP_NOT:
-			printf("~");
+			//printf("~");
 			break;
 		default:
 			return -1;
@@ -123,7 +105,7 @@ static int analyze_unary_expression(struct symbol_table *symbol_table, struct as
 		return -1;
 	}
 
-	printf(")");
+	//printf(")");
 
 	return 0;
 }
@@ -133,9 +115,19 @@ static int analyze_expression(struct symbol_table *symbol_table, struct ast_node
 
 	switch (expression->type) {
 		case AST_BINARY_EXPRESSION:
-			return analyze_binary_expression(symbol_table, expression, type);
+            ret = analyze_binary_expression(symbol_table, expression, type);
+            if (ret) {
+                return ret;
+            }
+
+            break;
 		case AST_UNARY_EXPRESSION:
-			return analyze_unary_expression(symbol_table, expression, type);
+        ret = analyze_unary_expression(symbol_table, expression, type);
+            if (ret) {
+                return ret;
+            }
+
+            break;
 		case AST_BEHAVIOUR_IDENTIFIER:
 			ret = analyze_behaviour_identifier(symbol_table, expression, type);
 			if (ret) {
@@ -147,15 +139,21 @@ static int analyze_expression(struct symbol_table *symbol_table, struct ast_node
 				return -1;
 			}
 
-			return 0;
+			break;
 		case AST_NUMBER:
 			type->access_type = EXPRESSION_TYPE_READ;
 			type->width = 64;
-			printf("%lu", expression->data.number);
-			return 0;
+			//printf("%lu", expression->data.number);
+			break;
 		default:
 			return -1;
 	}
+
+    struct expression_type *expression_type = xmalloc(sizeof(struct expression_type));
+    expression_type_copy(expression_type, type);
+    expression->semantic_data.expression_type = expression_type;
+
+    return 0;
 }
 
 static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node *subscript) {
@@ -194,7 +192,7 @@ static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node 
 		return -1;
 	}
 
-	printf("[%lu:%lu]", start_index, end_index);
+	//printf("[%lu:%lu]", start_index, end_index);
 
 	return 0;
 }
@@ -225,9 +223,9 @@ static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struc
 
     struct symbol_type *symbol_type = symbol->type;
 
-    printf("((");
-    symbol_type_print(stdout, symbol_type);
-    printf(") %s)", signal_name);
+    //printf("((");
+    //symbol_type_print(stdout, symbol_type);
+    //printf(") %s)", signal_name);
 
     struct ast_node *property_identifier = behaviour_identifier->children[1];
     if (property_identifier == NULL) {
@@ -237,7 +235,7 @@ static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struc
         	return -1;
         }
 
-    	printf(".%s", property_identifier->data.identifier);
+    	//printf(".%s", property_identifier->data.identifier);
 
     	if (symbol_type->type != SYMBOL_TYPE_BLOCK) {
     		fprintf(stderr, "Property access on signal\n");
@@ -299,7 +297,7 @@ static int analyze_behaviour_statement(struct symbol_table *symbol_table, struct
     	return -1;
     }
 
-    printf(" = ");
+    //printf(" = ");
 
     struct expression_type source_type;
 
@@ -313,12 +311,16 @@ static int analyze_behaviour_statement(struct symbol_table *symbol_table, struct
     	return -1;
     }
 
-    printf(";\n");
+    //printf(";\n");
 
     if (target_type.width != source_type.width) {
 		fprintf(stderr, "Operand types of assignment expression don't match\n");
 		return -1;
 	}
+
+    struct expression_type *expression_type = xmalloc(sizeof(struct expression_type));
+    expression_type_copy(expression_type, &source_type);
+    behaviour_statement->semantic_data.expression_type = expression_type;
 
     return 0;
 }
@@ -367,8 +369,8 @@ static int analyze_declaration_identifier(struct symbol_table *symbol_table, str
 
 	struct symbol *symbol = symbol_create(name, symbol_type);
 
-	symbol_print(stdout, symbol);
-	printf(";\n");
+	//symbol_print(stdout, symbol);
+	//printf(";\n");
 
 	symbol_table_add(symbol_table, symbol);
 
@@ -534,14 +536,14 @@ static int analyze_block(struct symbol_table *symbol_table, struct ast_node *blo
         return -1;
     }
 
-    block->data.symbol_table = symbol_table_create(symbol_table);
+    block->semantic_data.symbol_table = symbol_table_create(symbol_table);
 
-    ret = analyze_declarations(block->data.symbol_table, block->children[1]);
+    ret = analyze_declarations(block->semantic_data.symbol_table, block->children[1]);
     if (ret) {
         return ret;
     }
 
-    ret = analyze_behaviour_statements(block->data.symbol_table, block->children[2]);
+    ret = analyze_behaviour_statements(block->semantic_data.symbol_table, block->children[2]);
     if (ret) {
         return ret;
     }

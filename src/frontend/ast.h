@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "expression_type.h"
+
 enum ast_node_type {
     AST_NONE = 0,
 
@@ -44,8 +46,11 @@ struct ast_node {
         char *identifier;
         uint64_t number;
         enum ast_op op;
-        struct symbol_table *symbol_table;
     } data;
+    union {
+        struct symbol_table *symbol_table;
+        struct expression_type *expression_type;
+    } semantic_data;
 };
 
 struct ast_node *ast_create_node(enum ast_node_type type);

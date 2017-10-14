@@ -1,4 +1,7 @@
 
+add_subdirectory("LogicSimulator/")
+add_subdirectory("linker/")
+
 add_executable(backend
 	"main.c"
 )
