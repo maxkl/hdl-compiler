@@ -12,7 +12,7 @@
 
 #include <shared/helper/mem.h>
 
-static const char short_options[] = "-:x:cb:o:v::Vh";
+static const char short_options[] = "-:x:clb:o:v::Vh";
 static const struct option long_options[] = {
 	{ "version", no_argument, NULL, 'V' },
 	{ "help", no_argument, NULL, 'h' },
@@ -100,6 +100,7 @@ void print_help(const char *program_name) {
 	printf("\n");
 	printf("                If 'auto' is specified, the type is guessed based on the file extension.\n");
 	printf("  -c            Compile each input file separately to intermediate code.\n");
+	printf("  -l            Compile the input files to intermediate code and link them, but don't run the backend.\n");
 	printf("  -b <backend>  Use a specific backend.\n");
 	printf("                Available backends are: ");
 	for (int i = 0; backends[i].name; i++) {
@@ -169,6 +170,7 @@ int main(int argc, char **argv) {
 
 	int input_file_type_opt = -1;
 	bool frontend_only_opt = false;
+	bool link_only_opt = false;
 	int backend_opt = 0;
 	char *output_file_name_opt = NULL;
 	int verbose_opt = 0;
@@ -210,6 +212,9 @@ int main(int argc, char **argv) {
 				break;
 			case 'c':
 				frontend_only_opt = true;
+				break;
+			case 'l':
+				link_only_opt = true;
 				break;
 			case 'b': ;
 				bool found_backend = false;
@@ -303,8 +308,6 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	// TODO: replace printfs with actions
-
 	if (verbose_opt > 0) {
 		printf("enable verbose logging, level %i\n", verbose_opt);
 	}
@@ -319,8 +322,12 @@ int main(int argc, char **argv) {
 
 	if (!frontend_only_opt) {
 		printf("link all intermediate files together\n");
-		printf("run %s backend\n", backends[backend_opt].name);
-		printf("write output to %s\n", output_file_name_opt);
+		if (link_only_opt) {
+			printf("write linked intermediate file to %s\n", output_file_name_opt);
+		} else {
+			printf("run %s backend\n", backends[backend_opt].name);
+			printf("write output to %s\n", output_file_name_opt);
+		}
 	}
 
 	return 0;
