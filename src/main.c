@@ -11,8 +11,11 @@
 #include <getopt.h>
 
 #include <shared/helper/mem.h>
+#include <shared/intermediate.h>
+#include <shared/intermediate_file.h>
+#include <frontend/frontend.h>
 
-static const char short_options[] = "-:x:clb:o:v::Vh";
+static const char short_options[] = "-:x:dclb:o:v::Vh";
 static const struct option long_options[] = {
 	{ "version", no_argument, NULL, 'V' },
 	{ "help", no_argument, NULL, 'h' },
@@ -30,10 +33,10 @@ static const struct {
 
 static const struct {
 	const char *name;
-	int (* fn)();
+	int (* fn)(const char *filename, struct intermediate_file *intermediate_file);
 } input_file_types[] = {
-	{ "hdl", NULL },
-	{ "intermediate", NULL },
+	{ "hdl", frontend_compile },
+	{ "intermediate", intermediate_file_read },
 	{ NULL, NULL }
 };
 
@@ -99,6 +102,7 @@ void print_help(const char *program_name) {
 	}
 	printf("\n");
 	printf("                If 'auto' is specified, the type is guessed based on the file extension.\n");
+	printf("  -d            Dump intermediate code without generating any output.\n");
 	printf("  -c            Compile each input file separately to intermediate code.\n");
 	printf("  -l            Compile the input files to intermediate code and link them, but don't run the backend.\n");
 	printf("  -b <backend>  Use a specific backend.\n");
@@ -169,6 +173,7 @@ int main(int argc, char **argv) {
 	xfree(argv0_copy);
 
 	int input_file_type_opt = -1;
+	bool dump_intermediate_opt = false;
 	bool frontend_only_opt = false;
 	bool link_only_opt = false;
 	int backend_opt = 0;
@@ -209,6 +214,9 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "error: unrecognized input file type '%s'\n", optarg);
 					return 1;
 				}
+				break;
+			case 'd':
+				dump_intermediate_opt = true;
 				break;
 			case 'c':
 				frontend_only_opt = true;
@@ -312,18 +320,45 @@ int main(int argc, char **argv) {
 		printf("enable verbose logging, level %i\n", verbose_opt);
 	}
 
+	struct intermediate_file *intermediate_files = NULL;
+
+	if (!frontend_only_opt && !dump_intermediate_opt) {
+		intermediate_files = xcalloc(input_file_count, sizeof(struct intermediate_file));
+	}
+
 	for (size_t i = 0; i < input_file_count; i++) {
 		struct input_file *input_file = &input_files[i];
-		printf("compile %s file %s to intermediate\n", input_file_types[input_file->type].name, input_file->name);
+
+		struct intermediate_file intermediate_file;
+
+		ret = input_file_types[input_file->type].fn(input_file->name, &intermediate_file);
+		if (ret) {
+			return ret;
+		}
+
 		if (frontend_only_opt) {
-			printf("write intermediate file to %s\n", output_file_name_opt);
+			ret = intermediate_file_write(output_file_name_opt, &intermediate_file);
+			if (ret) {
+				return ret;
+			}
+		} else if (dump_intermediate_opt) {
+			printf("%s:\n", input_file->name);
+			intermediate_print(stdout, intermediate_file.blocks, intermediate_file.block_count);
+		} else {
+			memcpy(&intermediate_files[i], &intermediate_file, sizeof(struct intermediate_file));
 		}
 	}
 
-	if (!frontend_only_opt) {
+	if (!frontend_only_opt && !dump_intermediate_opt) {
+		struct intermediate_file intermediate_file;
+
 		printf("link all intermediate files together\n");
+
 		if (link_only_opt) {
-			printf("write linked intermediate file to %s\n", output_file_name_opt);
+			ret = intermediate_file_write(output_file_name_opt, &intermediate_file);
+			if (ret) {
+				return ret;
+			}
 		} else {
 			printf("run %s backend\n", backends[backend_opt].name);
 			printf("write output to %s\n", output_file_name_opt);

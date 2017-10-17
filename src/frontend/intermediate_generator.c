@@ -310,7 +310,7 @@ static int generate_blocks(struct ast_node *blocks, struct intermediate_block **
     return 0;
 }
 
-int intermediate_generator_generate(struct ast_node *ast_root, struct intermediate_block ***blocks_out, size_t *block_count_out) {
+int intermediate_generator_generate(struct ast_node *ast_root, struct intermediate_file *intermediate_file) {
 	int ret;
 
     struct intermediate_block **blocks = NULL;
@@ -335,8 +335,8 @@ int intermediate_generator_generate(struct ast_node *ast_root, struct intermedia
     // (*blocks)[0] = block;
     // *block_count = 1;
 
-    *blocks_out = blocks;
-    *block_count_out = block_count;
+    intermediate_file->blocks = blocks;
+    intermediate_file->block_count = block_count;
 
     return 0;
 }

@@ -108,7 +108,12 @@ int main(int argc, char **argv) {
 
     ast_destroy_node(ast_root);
 
-    ret = intermediate_file_write(target_filename, blocks, block_count);
+    struct intermediate_file intermediate_file = {
+        .blocks = blocks,
+        .block_count = block_count
+    };
+
+    ret = intermediate_file_write(target_filename, &intermediate_file);
     if (ret) {
         return ret;
     }

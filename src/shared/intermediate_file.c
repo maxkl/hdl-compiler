@@ -479,7 +479,7 @@ enum error write_blocks(FILE *f, struct intermediate_block **blocks, uint32_t bl
     return ERROR_OK;
 }
 
-enum error parse_file(FILE *f, struct intermediate_block ***blocks_out, uint32_t *block_count_out) {
+enum error parse_file(FILE *f, struct intermediate_file *file) {
     enum error err;
 
     // Check magic
@@ -566,13 +566,13 @@ enum error parse_file(FILE *f, struct intermediate_block ***blocks_out, uint32_t
         return ERROR_JUNK_AT_END;
     }
 
-    *blocks_out = blocks;
-    *block_count_out = block_count;
+    file->blocks = blocks;
+    file->block_count = block_count;
 
     return ERROR_OK;
 }
 
-enum error write_file(FILE *f, struct intermediate_block **blocks, uint32_t block_count) {
+enum error write_file(FILE *f, struct intermediate_file *file) {
     enum error err;
 
     // Write magic
@@ -589,7 +589,7 @@ enum error write_file(FILE *f, struct intermediate_block **blocks, uint32_t bloc
 
     struct string_table *string_table = xcalloc(1, sizeof(struct string_table));
 
-    err = write_blocks(f, blocks, block_count, string_table);
+    err = write_blocks(f, file->blocks, file->block_count, string_table);
     if (err) {
         return err;
     }
@@ -609,7 +609,7 @@ enum error write_file(FILE *f, struct intermediate_block **blocks, uint32_t bloc
     return ERROR_OK;
 }
 
-int intermediate_file_read(const char *filename, struct intermediate_block ***blocks, uint32_t *block_count) {
+int intermediate_file_read(const char *filename, struct intermediate_file *file) {
     enum error err;
 
     FILE *f = fopen(filename, "rb");
@@ -618,7 +618,7 @@ int intermediate_file_read(const char *filename, struct intermediate_block ***bl
         return ERROR_FAIL;
     }
 
-    err = parse_file(f, blocks, block_count);
+    err = parse_file(f, file);
     switch (err) {
         case ERROR_OK:
             break;
@@ -647,7 +647,7 @@ int intermediate_file_read(const char *filename, struct intermediate_block ***bl
     return err;
 }
 
-int intermediate_file_write(const char *filename, struct intermediate_block **blocks, uint32_t block_count) {
+int intermediate_file_write(const char *filename, struct intermediate_file *file) {
     enum error err;
 
     FILE *f = fopen(filename, "wb");
@@ -656,7 +656,7 @@ int intermediate_file_write(const char *filename, struct intermediate_block **bl
         return ERROR_FAIL;
     }
 
-    err = write_file(f, blocks, block_count);
+    err = write_file(f, file);
 
     fclose(f);
 

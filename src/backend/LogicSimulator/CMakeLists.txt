@@ -1,5 +1,6 @@
 
-add_executable(backend-LogicSimulator
-	"main.c"
+set(sources ${sources}
+	"${CMAKE_CURRENT_SOURCE_DIR}/main.c"
 )
-target_link_libraries(backend-LogicSimulator shared)
+
+set(sources ${sources} PARENT_SCOPE)

@@ -30,7 +30,7 @@ int link_blocks(struct intermediate_block **target_blocks, uint32_t target_block
     return 0;
 }
 
-int main(int argc, char **argv) {
+static int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <input files>... <output file>\n", argv[0]);
         return -1;
@@ -46,19 +46,18 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc - 1; i++) {
     	const char *input_filename = argv[i];
 
-	    struct intermediate_block **blocks;
-	    uint32_t block_count;
+	    struct intermediate_file file;
 
-	    ret = intermediate_file_read(input_filename, &blocks, &block_count);
+	    ret = intermediate_file_read(input_filename, &file);
 	    if (ret) {
 	    	return ret;
 	    }
 
 	    uint32_t prev_block_count = linked_block_count;
-	    linked_block_count += block_count;
+	    linked_block_count += file.block_count;
 	    linked_blocks = xrealloc(linked_blocks, sizeof(struct intermediate_block *) * linked_block_count);
 
-	    ret = link_blocks(linked_blocks, prev_block_count, blocks, block_count);
+	    ret = link_blocks(linked_blocks, prev_block_count, file.blocks, file.block_count);
 	    if (ret) {
 	    	return ret;
 	    }
@@ -79,7 +78,12 @@ int main(int argc, char **argv) {
 	//     fclose(output_file);
 	// }
 
-	ret = intermediate_file_write(output_filename, linked_blocks, linked_block_count);
+	struct intermediate_file file = {
+		.blocks = linked_blocks,
+		.block_count = linked_block_count
+	};
+
+	ret = intermediate_file_write(output_filename, &file);
     if (ret) {
     	return ret;
     }

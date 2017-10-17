@@ -221,7 +221,7 @@ int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_t block
     return 0;
 }
 
-int main(int argc, char **argv) {
+static int main(int argc, char **argv) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <input file> <output file>\n", argv[0]);
         return -1;
@@ -232,10 +232,9 @@ int main(int argc, char **argv) {
 
     int ret;
 
-    struct intermediate_block **blocks;
-    uint32_t block_count;
+    struct intermediate_file file;
 
-    ret = intermediate_file_read(input_filename, &blocks, &block_count);
+    ret = intermediate_file_read(input_filename, &file);
     if (ret) {
     	return ret;
     }
@@ -251,7 +250,7 @@ int main(int argc, char **argv) {
 	    }
 	}
 
-    ret = generate_circuit(output_file, blocks, block_count);
+    ret = generate_circuit(output_file, file.blocks, file.block_count);
     if (ret) {
     	return ret;
     }
