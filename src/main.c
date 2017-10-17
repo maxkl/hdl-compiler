@@ -14,6 +14,8 @@
 #include <shared/intermediate.h>
 #include <shared/intermediate_file.h>
 #include <frontend/frontend.h>
+#include <linker/linker.h>
+#include <backend/LogicSimulator/backend_LogicSimulator.h>
 
 static const char short_options[] = "-:x:dclb:o:v::Vh";
 static const struct option long_options[] = {
@@ -24,9 +26,9 @@ static const struct option long_options[] = {
 
 static const struct {
 	const char *name;
-	int (* fn)();
+	int (* fn)(const char *output_filename, struct intermediate_file *intermediate_file);
 } backends[] = {
-	{ "LogicSimulator", NULL },
+	{ "LogicSimulator", backend_LogicSimulator_run },
 	{ "csim", NULL },
 	{ NULL, NULL }
 };
@@ -352,7 +354,10 @@ int main(int argc, char **argv) {
 	if (!frontend_only_opt && !dump_intermediate_opt) {
 		struct intermediate_file intermediate_file;
 
-		printf("link all intermediate files together\n");
+		ret = linker_link(&intermediate_file, intermediate_files, input_file_count);
+		if (ret) {
+			return ret;
+		}
 
 		if (link_only_opt) {
 			ret = intermediate_file_write(output_file_name_opt, &intermediate_file);
@@ -360,8 +365,10 @@ int main(int argc, char **argv) {
 				return ret;
 			}
 		} else {
-			printf("run %s backend\n", backends[backend_opt].name);
-			printf("write output to %s\n", output_file_name_opt);
+			ret = backends[backend_opt].fn(output_file_name_opt, &intermediate_file);
+			if (ret) {
+				return ret;
+			}
 		}
 	}
 

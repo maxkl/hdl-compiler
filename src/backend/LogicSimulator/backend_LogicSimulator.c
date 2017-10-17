@@ -1,4 +1,6 @@
 
+#include "backend_LogicSimulator.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -8,7 +10,7 @@
 #include <shared/intermediate.h>
 #include <shared/intermediate_file.h>
 
-int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_t block_count) {
+static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_t block_count) {
 	if (block_count == 0) {
 		fprintf(stderr, "Need at least one block\n");
 		return -1;
@@ -221,43 +223,20 @@ int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_t block
     return 0;
 }
 
-static int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <input file> <output file>\n", argv[0]);
-        return -1;
-    }
+int backend_LogicSimulator_run(const char *output_filename, struct intermediate_file *intermediate_file) {
+	int ret;
 
-    const char *input_filename = argv[1];
-    const char *output_filename = argv[2];
-
-    int ret;
-
-    struct intermediate_file file;
-
-    ret = intermediate_file_read(input_filename, &file);
-    if (ret) {
-    	return ret;
-    }
-
-    FILE *output_file;
-
-    if (strcmp(output_filename, "-") == 0) {
-    	output_file = stdout;
-    } else {
-	    output_file = fopen(output_filename, "wb");
-	    if (output_file == NULL) {
-	    	return -1;
-	    }
+	FILE *output_file = fopen(output_filename, "wb");
+	if (output_file == NULL) {
+		return 1;
 	}
 
-    ret = generate_circuit(output_file, file.blocks, file.block_count);
-    if (ret) {
-    	return ret;
-    }
-
-    if (output_file != stdout) {
-	    fclose(output_file);
+	ret = generate_circuit(output_file, intermediate_file->blocks, intermediate_file->block_count);
+	if (ret) {
+		return ret;
 	}
 
-    return 0;
+	fclose(output_file);
+
+	return 0;
 }

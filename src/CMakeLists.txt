@@ -3,6 +3,7 @@ unset(sources)
 
 add_subdirectory("shared/")
 add_subdirectory("frontend/")
+add_subdirectory("linker/")
 add_subdirectory("backend/")
 
 add_executable(hdlc
