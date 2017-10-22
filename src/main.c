@@ -88,6 +88,26 @@ const char *get_extension(const char *filename) {
 	return dot + 1;
 }
 
+char *replace_extension(const char *filename, const char *new_extension) {
+	const char *slash = strrchr(filename, '/');
+	const char *dot = strrchr(filename, '.');
+	size_t filename_len = strlen(filename);
+	size_t ext_len = strlen(new_extension);
+	size_t filename_without_ext_len;
+	if (dot == NULL || dot == filename || (slash != NULL && dot < slash)) {
+		filename_without_ext_len = filename_len;
+	} else {
+		filename_without_ext_len = dot - filename;
+	}
+	size_t new_len = filename_without_ext_len + 1 + ext_len;
+	char *new_filename = xmalloc(new_len + 1);
+	memcpy(new_filename, filename, filename_without_ext_len);
+	new_filename[filename_without_ext_len] = '.';
+	memcpy(new_filename + filename_without_ext_len + 1, new_extension, ext_len);
+	new_filename[new_len] = '\0';
+	return new_filename;
+}
+
 void print_version(const char *program_name) {
 	printf("%s x.x.x\n", program_name);
 }
@@ -339,9 +359,24 @@ int main(int argc, char **argv) {
 		}
 
 		if (frontend_only_opt) {
-			ret = intermediate_file_write(output_file_name_opt, &intermediate_file);
+			bool output_file_name_generated;
+			char *output_file_name;
+
+			if (input_file_count == 1 && output_file_name_opt != NULL) {
+				output_file_name = output_file_name_opt;
+				output_file_name_generated = false;
+			} else {
+				output_file_name = replace_extension(input_file->name, "hdli");
+				output_file_name_generated = true;
+			}
+
+			ret = intermediate_file_write(output_file_name, &intermediate_file);
 			if (ret) {
 				return ret;
+			}
+
+			if (output_file_name_generated) {
+				xfree(output_file_name);
 			}
 		} else if (dump_intermediate_opt) {
 			printf("%s:\n", input_file->name);
@@ -360,6 +395,10 @@ int main(int argc, char **argv) {
 		}
 
 		if (link_only_opt) {
+			if (output_file_name_opt == NULL) {
+				output_file_name_opt = "linked.hdli";
+			}
+
 			ret = intermediate_file_write(output_file_name_opt, &intermediate_file);
 			if (ret) {
 				return ret;

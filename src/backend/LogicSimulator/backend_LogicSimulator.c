@@ -226,6 +226,10 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 int backend_LogicSimulator_run(const char *output_filename, struct intermediate_file *intermediate_file) {
 	int ret;
 
+	if (output_filename == NULL) {
+		output_filename = "circuit.json";
+	}
+
 	FILE *output_file = fopen(output_filename, "wb");
 	if (output_file == NULL) {
 		return 1;
