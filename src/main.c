@@ -124,7 +124,7 @@ void print_help(const char *program_name) {
 	}
 	printf("\n");
 	printf("                If 'auto' is specified, the type is guessed based on the file extension.\n");
-	printf("  -d            Dump intermediate code without generating any output.\n");
+	printf("  -d            Treat all input files as intermediate code and dump them.\n");
 	printf("  -c            Compile each input file separately to intermediate code.\n");
 	printf("  -l            Compile the input files to intermediate code and link them, but don't run the backend.\n");
 	printf("  -b <backend>  Use a specific backend.\n");
@@ -328,9 +328,31 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if (verbose_opt > 0) {
+		printf("enable verbose logging, level %i\n", verbose_opt);
+	}
+
 	if (input_file_count == 0) {
 		fprintf(stderr, "error: no input files\n");
 		return 1;
+	}
+
+	if (dump_intermediate_opt) {
+		for (size_t i = 0; i < input_file_count; i++) {
+			struct input_file *input_file = &input_files[i];
+
+			struct intermediate_file intermediate_file;
+
+			ret = intermediate_file_read(input_file->name, &intermediate_file);
+			if (ret) {
+				return ret;
+			}
+
+			printf("%s:\n", input_file->name);
+			intermediate_print(stdout, intermediate_file.blocks, intermediate_file.block_count);
+		}
+
+		return 0;
 	}
 
 	if (input_file_count > 1 && frontend_only_opt && output_file_name_opt != NULL) {
@@ -338,13 +360,9 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (verbose_opt > 0) {
-		printf("enable verbose logging, level %i\n", verbose_opt);
-	}
-
 	struct intermediate_file *intermediate_files = NULL;
 
-	if (!frontend_only_opt && !dump_intermediate_opt) {
+	if (!frontend_only_opt) {
 		intermediate_files = xcalloc(input_file_count, sizeof(struct intermediate_file));
 	}
 
@@ -378,15 +396,12 @@ int main(int argc, char **argv) {
 			if (output_file_name_generated) {
 				xfree(output_file_name);
 			}
-		} else if (dump_intermediate_opt) {
-			printf("%s:\n", input_file->name);
-			intermediate_print(stdout, intermediate_file.blocks, intermediate_file.block_count);
 		} else {
 			memcpy(&intermediate_files[i], &intermediate_file, sizeof(struct intermediate_file));
 		}
 	}
 
-	if (!frontend_only_opt && !dump_intermediate_opt) {
+	if (!frontend_only_opt) {
 		struct intermediate_file intermediate_file;
 
 		ret = linker_link(&intermediate_file, intermediate_files, input_file_count);
