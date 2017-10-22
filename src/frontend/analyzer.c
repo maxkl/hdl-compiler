@@ -142,8 +142,11 @@ static int analyze_expression(struct symbol_table *symbol_table, struct ast_node
 			break;
 		case AST_NUMBER:
 			type->access_type = EXPRESSION_TYPE_READ;
-			type->width = 64;
-			//printf("%lu", expression->data.number);
+			type->width = expression->data.number.width;
+			if (expression->data.number.width == 0) {
+                fprintf(stderr, "Number literal without width specifier used in expression\n");
+                return -1;
+            }
 			break;
 		default:
 			return -1;
@@ -174,7 +177,7 @@ static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node 
         return -1;
     }
 
-    start_index = start_number->data.number;
+    start_index = start_number->data.number.value;
 
     struct ast_node *end_number = subscript->children[1];
     if (end_number == NULL) {
@@ -184,7 +187,7 @@ static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node 
 	        return -1;
 	    }
 
-    	end_index = end_number->data.number;
+    	end_index = end_number->data.number.value;
 	}
 
 	if (end_index > start_index) {
@@ -461,7 +464,7 @@ static int analyze_type(struct symbol_table *symbol_table, struct ast_node *type
 	    	return -1;
 	    }
 
-	    uint64_t width = type_width->data.number;
+	    uint64_t width = type_width->data.number.value;
 
 	    if (width == 0) {
 	    	fprintf(stderr, "Signal declared with invalid width of 0\n");

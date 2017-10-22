@@ -65,6 +65,15 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 		switch (stmt->op) {
 			case INTERMEDIATE_OP_CONNECT:
 				break;
+			case INTERMEDIATE_OP_CONST_0:
+			case INTERMEDIATE_OP_CONST_1:
+				if (added_component) {
+					fprintf(f, ",");
+				}
+				fprintf(f, "{\"type\":\"const\",\"x\":%lu,\"y\":%lu,\"value\":%s}", component_offset + 1, top_offset, stmt->op == INTERMEDIATE_OP_CONST_1 ? "true" : "false");
+				added_component = true;
+				top_offset += 4;
+				break;
 			case INTERMEDIATE_OP_AND:
 				if (added_component) {
 					fprintf(f, ",");
@@ -129,6 +138,10 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 				fprintf(f, "{\"x1\":%lu,\"y1\":%lu,\"x2\":%lu,\"y2\":%lu}", (size_t) stmt->inputs[0] * 2, top_offset, output_connection_offset + stmt->outputs[0] * 2, top_offset);
 				added_connection = true;
 				skip_connections = true;
+				break;
+			case INTERMEDIATE_OP_CONST_0:
+			case INTERMEDIATE_OP_CONST_1:
+				top_offset += 4;
 				break;
 			case INTERMEDIATE_OP_AND:
 				top_offset += 1 + (stmt->input_count - 1) * 2 + 1;

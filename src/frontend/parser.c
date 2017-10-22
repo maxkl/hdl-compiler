@@ -108,7 +108,8 @@ static int parse_number(struct parser *parser, struct ast_node **node) {
     }
 
     *node = ast_create_node(AST_NUMBER);
-    (*node)->data.number = token->value.number;
+    (*node)->data.number.value = token->value.number.value;
+    (*node)->data.number.width = token->value.number.width;
 
     lexer_destroy_token(token);
 

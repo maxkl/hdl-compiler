@@ -79,7 +79,7 @@ static void print_node(struct ast_node *node, unsigned level) {
                 printf(" \"%s\"", node->data.identifier);
                 break;
             case AST_NUMBER:
-                printf(" %lu", node->data.number);
+                printf(" %lu#%lu", node->data.number.value, node->data.number.width);
                 break;
             case AST_BINARY_EXPRESSION:
             case AST_UNARY_EXPRESSION:

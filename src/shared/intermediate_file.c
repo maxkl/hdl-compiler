@@ -170,6 +170,16 @@ enum error parse_block_statement(FILE *f, struct intermediate_statement *stmt) {
             input_count = 1;
             output_count = 1;
             break;
+        case INTERMEDIATE_OP_CONST_0:
+        case INTERMEDIATE_OP_CONST_1:
+            if (size != 1) {
+                log_debug("CONST_X can't have other than 0 inputs\n");
+                return ERROR_FAIL;
+            }
+
+            input_count = 0;
+            output_count = 1;
+            break;
         case INTERMEDIATE_OP_AND:
             if (size < 2) {
                 log_debug("AND can't have %u inputs\n", size);
@@ -228,9 +238,9 @@ enum error parse_block_statement(FILE *f, struct intermediate_statement *stmt) {
     stmt->op = op;
     stmt->size = size;
     stmt->input_count = input_count;
-    stmt->inputs = xcalloc(stmt->input_count, sizeof(uint32_t));
+    stmt->inputs = stmt->input_count > 0 ? xcalloc(stmt->input_count, sizeof(uint32_t)) : NULL;
     stmt->output_count = output_count;
-    stmt->outputs = xcalloc(stmt->output_count, sizeof(uint32_t));
+    stmt->outputs = stmt->output_count > 0 ? xcalloc(stmt->output_count, sizeof(uint32_t)) : NULL;
 
     for (uint32_t i = 0; i < input_count; i++) {
         uint32_t input_id;
@@ -314,11 +324,11 @@ enum error parse_block(FILE *f, struct intermediate_block *block) {
 
     block->name_index = name_index;
     block->input_count = input_count;
-    block->inputs = xcalloc(block->input_count, sizeof(struct intermediate_input));
+    block->inputs = block->input_count > 0 ? xcalloc(block->input_count, sizeof(struct intermediate_input)) : NULL;
     block->output_count = output_count;
-    block->outputs = xcalloc(block->output_count, sizeof(struct intermediate_output));
+    block->outputs = block->output_count > 0 ? xcalloc(block->output_count, sizeof(struct intermediate_output)) : NULL;
     block->statement_count = statement_count;
-    block->statements = xcalloc(block->statement_count, sizeof(struct intermediate_statement));
+    block->statements = block->statement_count > 0 ? xcalloc(block->statement_count, sizeof(struct intermediate_statement)) : NULL;
 
     uint32_t signal_id = 0;
 

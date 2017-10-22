@@ -145,9 +145,41 @@ int lexer_read_next_token(struct lexer *lexer, struct lexer_token **token_out) {
             c = lexer_getc(lexer);
         } while (isdigit(c));
 
+        uint64_t width = 0;
+
+        if (c == '#') {
+            c = lexer_getc(lexer);
+
+            do {
+                width *= 10;
+                width += c - '0';
+                c = lexer_getc(lexer);
+            } while (isdigit(c));
+
+            if (width == 0) {
+                lexer_print_location(stderr, lexer->location);
+                fprintf(stderr, ": Number literal width == 0\n");
+                lexer_destroy_token(token);
+                return -1;
+            }
+        }
+
+        if (width > 64) {
+            lexer_print_location(stderr, lexer->location);
+            fprintf(stderr, ": Number literal width > 64\n");
+            lexer_destroy_token(token);
+            return -1;
+        }
+
+        if (width > 0 && num > (1 << width) - 1) {
+            lexer_print_location(stderr, lexer->location);
+            fprintf(stderr, ": Number literal value doesn't fit in specified width (warning)\n");
+        }
+
         lexer_ungetc(lexer);
 
-        token->value.number = num;
+        token->value.number.value = num;
+        token->value.number.width = width;
     } else if (isalpha(c) || c == '_') {
 
         char *str = NULL;

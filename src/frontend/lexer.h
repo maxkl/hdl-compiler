@@ -55,7 +55,10 @@ struct lexer_token {
     enum lexer_token_type type;
     union {
         char *identifier;
-        uint64_t number;
+        struct {
+            uint64_t value;
+            uint64_t width;
+        } number;
     } value;
     struct lexer_location *location;
 };

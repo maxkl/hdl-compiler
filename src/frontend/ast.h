@@ -44,7 +44,10 @@ struct ast_node {
     struct ast_node **children;
     union {
         char *identifier;
-        uint64_t number;
+        struct {
+            uint64_t value;
+            uint64_t width;
+        } number;
         enum ast_op op;
     } data;
     union {

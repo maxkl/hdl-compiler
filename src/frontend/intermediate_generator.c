@@ -100,6 +100,22 @@ static int generate_unary_expression(struct ast_node *expression, struct symbol_
 	return 0;
 }
 
+static int generate_constant(uint64_t value, uint64_t width, uint32_t *signal_out_out, struct intermediate_block *block) {
+    int ret;
+
+    uint32_t signal_out = intermediate_block_allocate_signals(block, width);
+
+    for (uint32_t i = 0; i < width; i++) {
+        bool bit = value & (1 << i);
+        struct intermediate_statement *stmt = intermediate_block_add_statement(block, bit ? INTERMEDIATE_OP_CONST_1 : INTERMEDIATE_OP_CONST_0, 1);
+        intermediate_statement_set_output(stmt, 0, signal_out + i);
+    }
+
+    *signal_out_out = signal_out;
+
+    return 0;
+}
+
 static int generate_expression(struct ast_node *expression, struct symbol_table *symbol_table, uint32_t *signal_out_out, struct intermediate_block *block) {
 	int ret;
 
@@ -111,8 +127,7 @@ static int generate_expression(struct ast_node *expression, struct symbol_table 
 		case AST_BEHAVIOUR_IDENTIFIER:
 			return generate_behaviour_identifier(expression, symbol_table, signal_out_out);
 		case AST_NUMBER:
-			fprintf(stderr, "Constants not supported\n");
-			return -1;
+            return generate_constant(expression->data.number.value, expression->data.number.width, signal_out_out, block);
 		default:
 			return -1;
 	}

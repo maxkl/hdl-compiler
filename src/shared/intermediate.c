@@ -84,6 +84,11 @@ void intermediate_statement_init(struct intermediate_statement *statement, uint1
 			input_count = 1;
 			output_count = 1;
 			break;
+		case INTERMEDIATE_OP_CONST_0:
+		case INTERMEDIATE_OP_CONST_1:
+			input_count = 0;
+			output_count = 1;
+			break;
 		case INTERMEDIATE_OP_AND:
 		case INTERMEDIATE_OP_OR:
 		case INTERMEDIATE_OP_XOR:
@@ -107,9 +112,9 @@ void intermediate_statement_init(struct intermediate_statement *statement, uint1
 			return;
 	}
 	statement->input_count = input_count;
-	statement->inputs = xcalloc(input_count, sizeof(uint32_t));
+	statement->inputs = input_count > 0 ? xcalloc(input_count, sizeof(uint32_t)) : NULL;
 	statement->output_count = output_count;
-	statement->outputs = xcalloc(output_count, sizeof(uint32_t));
+	statement->outputs = output_count > 0 ? xcalloc(output_count, sizeof(uint32_t)) : NULL;
 }
 
 void intermediate_statement_destroy(struct intermediate_statement *statement) {
@@ -158,6 +163,12 @@ void intermediate_print(FILE *stream, struct intermediate_block **blocks, uint32
 			switch (stmt->op) {
 		        case INTERMEDIATE_OP_CONNECT:
 		            fprintf(stream, "CONNECT");
+		            break;
+		        case INTERMEDIATE_OP_CONST_0:
+		            fprintf(stream, "CONST_0");
+		            break;
+		        case INTERMEDIATE_OP_CONST_1:
+		            fprintf(stream, "CONST_1");
 		            break;
 		        case INTERMEDIATE_OP_AND:
 		            fprintf(stream, "AND");
