@@ -341,6 +341,10 @@ static int analyze_behaviour_statement(struct symbol_table *symbol_table, struct
 static int analyze_behaviour_statements(struct symbol_table *symbol_table, struct ast_node *behaviour_statements) {
     int ret;
 
+    if (behaviour_statements == NULL) {
+        return 0;
+    }
+
     if (behaviour_statements->type == AST_BEHAVIOUR_STATEMENT) {
         return analyze_behaviour_statement(symbol_table, behaviour_statements);
     }
@@ -508,6 +512,10 @@ static int analyze_declaration(struct symbol_table *symbol_table, struct ast_nod
 
 static int analyze_declarations(struct symbol_table *symbol_table, struct ast_node *declarations) {
     int ret;
+
+    if (declarations == NULL) {
+        return 0;
+    }
 
     if (declarations->type == AST_DECLARATION) {
         return analyze_declaration(symbol_table, declarations);

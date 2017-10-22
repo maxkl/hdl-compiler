@@ -200,6 +200,10 @@ static int generate_behaviour_statement(struct ast_node *behaviour_statement, st
 static int generate_behaviour_statements(struct ast_node *behaviour_statements, struct symbol_table *symbol_table, struct intermediate_block *block) {
     int ret;
 
+    if (behaviour_statements == NULL) {
+        return 0;
+    }
+
     if (behaviour_statements->type == AST_BEHAVIOUR_STATEMENT) {
         return generate_behaviour_statement(behaviour_statements, symbol_table, block);
     }
