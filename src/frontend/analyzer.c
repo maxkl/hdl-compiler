@@ -156,7 +156,7 @@ static int analyze_expression(struct symbol_table *symbol_table, struct ast_node
     return 0;
 }
 
-static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node *subscript) {
+static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node *subscript, uint64_t *start_index_out, uint64_t *end_index_out) {
 	int ret;
 
 	if (subscript->type != AST_SUBSCRIPT) {
@@ -192,7 +192,11 @@ static int analyze_subscript(struct symbol_table *symbol_table, struct ast_node 
 		return -1;
 	}
 
-	//printf("[%lu:%lu]", start_index, end_index);
+    subscript->semantic_data.subscript.start_index = start_index;
+    subscript->semantic_data.subscript.end_index = end_index;
+
+    *start_index_out = start_index;
+    *end_index_out = end_index;
 
 	return 0;
 }
@@ -262,13 +266,19 @@ static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struc
     if (subscript == NULL) {
     	type->width = symbol_type->width;
     } else {
-	    ret = analyze_subscript(symbol_table, subscript);
+        uint64_t start_index, end_index;
+
+	    ret = analyze_subscript(symbol_table, subscript, &start_index, &end_index);
 	    if (ret) {
 	        return ret;
 	    }
 
-	    fprintf(stderr, "Subscript not supported\n");
-    	return -1;
+        if (start_index >= symbol_type->width) {
+            fprintf(stderr, "Subscript index %lu exceeds type width %lu\n", start_index, symbol_type->width);
+            return -1;
+        }
+
+        type->width = start_index - end_index + 1;
 	}
 
 	return 0;

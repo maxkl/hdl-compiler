@@ -118,47 +118,6 @@ static int generate_expression(struct ast_node *expression, struct symbol_table 
 	}
 }
 
-static int generate_subscript(struct ast_node *subscript, struct symbol_table *symbol_table) {
-	int ret;
-
-	if (subscript->type != AST_SUBSCRIPT) {
-		return -1;
-	}
-
-	if (subscript->child_count != 2) {
-		return -1;
-	}
-
-	uint64_t start_index, end_index;
-
-	struct ast_node *start_number = subscript->children[0];
-    if (start_number->type != AST_NUMBER) {
-        return -1;
-    }
-
-    start_index = start_number->data.number;
-
-    struct ast_node *end_number = subscript->children[1];
-    if (end_number == NULL) {
-    	end_index = start_index;
-    } else {
-	    if (end_number->type != AST_NUMBER) {
-	        return -1;
-	    }
-
-    	end_index = end_number->data.number;
-	}
-
-	if (end_index > start_index) {
-		fprintf(stderr, "Invalid subscript range: end before start\n");
-		return -1;
-	}
-
-	printf("[%lu:%lu]", start_index, end_index);
-
-	return 0;
-}
-
 static int generate_behaviour_identifier(struct ast_node *behaviour_identifier, struct symbol_table *symbol_table, uint32_t *signal_out) {
 	int ret;
 
@@ -186,13 +145,7 @@ static int generate_behaviour_identifier(struct ast_node *behaviour_identifier, 
     if (subscript == NULL) {
     	//
     } else {
-	    ret = generate_subscript(subscript, symbol_table);
-	    if (ret) {
-	        return ret;
-	    }
-
-	    fprintf(stderr, "Subscript not supported\n");
-    	return -1;
+        signal += subscript->semantic_data.subscript.end_index;
 	}
 
     *signal_out = signal;

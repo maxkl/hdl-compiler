@@ -50,6 +50,10 @@ struct ast_node {
     union {
         struct symbol_table *symbol_table;
         struct expression_type *expression_type;
+        struct {
+            uint64_t start_index;
+            uint64_t end_index;
+        } subscript;
     } semantic_data;
 };
 
