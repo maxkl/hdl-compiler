@@ -18,15 +18,18 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 
 	struct intermediate_block *block = blocks[0];
 
-	uint32_t signal_count = 0;
+	uint32_t input_signal_count = 0;
+	uint32_t output_signal_count = 0;
 
 	for (uint32_t i = 0; i < block->input_count; i++) {
-		signal_count += block->inputs[0].width;
+		input_signal_count += block->inputs[0].width;
 	}
 
 	for (uint32_t i = 0; i < block->output_count; i++) {
-		signal_count += block->outputs[0].width;
+		output_signal_count += block->outputs[0].width;
 	}
+
+	uint32_t signal_count = input_signal_count + output_signal_count;
 
 	for (uint32_t i = 0; i < block->statement_count; i++) {
 		struct intermediate_statement *stmt = &block->statements[i];
@@ -112,6 +115,22 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 		}
 
 		top_offset += 1;
+	}
+
+	for (uint32_t i = 0; i < input_signal_count; i++) {
+		if (added_component) {
+			fprintf(f, ",");
+		}
+		fprintf(f, "{\"type\":\"togglebutton\",\"x\":%i,\"y\":%i}", -8, i * 6 - input_signal_count * 6);
+		added_component = true;
+	}
+
+	for (uint32_t i = 0; i < output_signal_count; i++) {
+		if (added_component) {
+			fprintf(f, ",");
+		}
+		fprintf(f, "{\"type\":\"led\",\"x\":%u,\"y\":%i,\"offColor\":\"#888\",\"onColor\":\"#e00\"}", (input_signal_count + output_signal_count) * 2 + 1, i * 6 - output_signal_count * 6);
+		added_component = true;
 	}
 
 	fprintf(f, "]");
@@ -225,6 +244,36 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 			fprintf(f, ",");
 		}
 		fprintf(f, "{\"x1\":%lu,\"y1\":%lu,\"x2\":%lu,\"y2\":%lu}", output_connection_offset + i * 2, (size_t) 0, output_connection_offset + i * 2, top_offset);
+		added_connection = true;
+	}
+
+	for (uint32_t i = 0; i < input_signal_count; i++) {
+		int x = i * 2;
+		int y = i * 6 - input_signal_count * 6 + 2;
+
+		if (added_connection) {
+			fprintf(f, ",");
+		}
+		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", -2, y, x, y);
+
+		fprintf(f, ",");
+		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
+
+		added_connection = true;
+	}
+
+	for (uint32_t i = 0; i < output_signal_count; i++) {
+		int x = (input_signal_count + i) * 2;
+		int y = i * 6 - output_signal_count * 6 + 2;
+
+		if (added_connection) {
+			fprintf(f, ",");
+		}
+		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, (input_signal_count + output_signal_count) * 2, y);
+
+		fprintf(f, ",");
+		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
+
 		added_connection = true;
 	}
 
