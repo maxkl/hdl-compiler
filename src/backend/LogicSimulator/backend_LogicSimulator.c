@@ -10,7 +10,7 @@
 #include <shared/intermediate.h>
 #include <shared/intermediate_file.h>
 
-static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_t block_count) {
+static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_t block_count, bool generate_io_components) {
 	if (block_count == 0) {
 		fprintf(stderr, "Need at least one block\n");
 		return -1;
@@ -117,20 +117,22 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 		top_offset += 1;
 	}
 
-	for (uint32_t i = 0; i < input_signal_count; i++) {
-		if (added_component) {
-			fprintf(f, ",");
+	if (generate_io_components) {
+		for (uint32_t i = 0; i < input_signal_count; i++) {
+			if (added_component) {
+				fprintf(f, ",");
+			}
+			fprintf(f, "{\"type\":\"togglebutton\",\"x\":%i,\"y\":%i}", -8, i * 6 - input_signal_count * 6);
+			added_component = true;
 		}
-		fprintf(f, "{\"type\":\"togglebutton\",\"x\":%i,\"y\":%i}", -8, i * 6 - input_signal_count * 6);
-		added_component = true;
-	}
 
-	for (uint32_t i = 0; i < output_signal_count; i++) {
-		if (added_component) {
-			fprintf(f, ",");
+		for (uint32_t i = 0; i < output_signal_count; i++) {
+			if (added_component) {
+				fprintf(f, ",");
+			}
+			fprintf(f, "{\"type\":\"led\",\"x\":%u,\"y\":%i,\"offColor\":\"#888\",\"onColor\":\"#e00\"}", (input_signal_count + output_signal_count) * 2 + 1, i * 6 - output_signal_count * 6);
+			added_component = true;
 		}
-		fprintf(f, "{\"type\":\"led\",\"x\":%u,\"y\":%i,\"offColor\":\"#888\",\"onColor\":\"#e00\"}", (input_signal_count + output_signal_count) * 2 + 1, i * 6 - output_signal_count * 6);
-		added_component = true;
 	}
 
 	fprintf(f, "]");
@@ -247,34 +249,36 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 		added_connection = true;
 	}
 
-	for (uint32_t i = 0; i < input_signal_count; i++) {
-		int x = i * 2;
-		int y = i * 6 - input_signal_count * 6 + 2;
+	if (generate_io_components) {
+		for (uint32_t i = 0; i < input_signal_count; i++) {
+			int x = i * 2;
+			int y = i * 6 - input_signal_count * 6 + 2;
 
-		if (added_connection) {
+			if (added_connection) {
+				fprintf(f, ",");
+			}
+			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", -2, y, x, y);
+
 			fprintf(f, ",");
+			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
+
+			added_connection = true;
 		}
-		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", -2, y, x, y);
 
-		fprintf(f, ",");
-		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
+		for (uint32_t i = 0; i < output_signal_count; i++) {
+			int x = (input_signal_count + i) * 2;
+			int y = i * 6 - output_signal_count * 6 + 2;
 
-		added_connection = true;
-	}
+			if (added_connection) {
+				fprintf(f, ",");
+			}
+			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, (input_signal_count + output_signal_count) * 2, y);
 
-	for (uint32_t i = 0; i < output_signal_count; i++) {
-		int x = (input_signal_count + i) * 2;
-		int y = i * 6 - output_signal_count * 6 + 2;
-
-		if (added_connection) {
 			fprintf(f, ",");
+			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
+
+			added_connection = true;
 		}
-		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, (input_signal_count + output_signal_count) * 2, y);
-
-		fprintf(f, ",");
-		fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
-
-		added_connection = true;
 	}
 
     fprintf(f, "]");
@@ -285,8 +289,20 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
     return 0;
 }
 
-int backend_LogicSimulator_run(const char *output_filename, struct intermediate_file *intermediate_file) {
+int backend_LogicSimulator_run(const char *output_filename, struct intermediate_file *intermediate_file, int argc, char **argv) {
 	int ret;
+
+	bool generate_io_components = false;
+
+	for (int i = 0; i < argc; i++) {
+		char *arg = argv[i];
+		if (strcmp(arg, "--generate-io-components") == 0) {
+			generate_io_components = true;
+		} else {
+			fprintf(stderr, "error: unrecognized backend option '%s'\n", arg);
+			return 1;
+		}
+	}
 
 	if (output_filename == NULL) {
 		output_filename = "circuit.json";
@@ -297,7 +313,7 @@ int backend_LogicSimulator_run(const char *output_filename, struct intermediate_
 		return 1;
 	}
 
-	ret = generate_circuit(output_file, intermediate_file->blocks, intermediate_file->block_count);
+	ret = generate_circuit(output_file, intermediate_file->blocks, intermediate_file->block_count, generate_io_components);
 	if (ret) {
 		return ret;
 	}

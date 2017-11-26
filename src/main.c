@@ -17,7 +17,7 @@
 #include <linker/linker.h>
 #include <backend/LogicSimulator/backend_LogicSimulator.h>
 
-static const char short_options[] = "-:x:dclb:o:v::Vh";
+static const char short_options[] = "-:x:dclb:o:B:v::Vh";
 static const struct option long_options[] = {
 	{ "version", no_argument, NULL, 'V' },
 	{ "help", no_argument, NULL, 'h' },
@@ -26,7 +26,7 @@ static const struct option long_options[] = {
 
 static const struct {
 	const char *name;
-	int (* fn)(const char *output_filename, struct intermediate_file *intermediate_file);
+	int (* fn)(const char *output_filename, struct intermediate_file *intermediate_file, int argc, char **argv);
 } backends[] = {
 	{ "LogicSimulator", backend_LogicSimulator_run },
 	{ "csim", NULL },
@@ -140,6 +140,7 @@ void print_help(const char *program_name) {
 	}
 	printf("\n");
 	printf("  -o <file>     Write output to <file>.\n");
+	printf("  -B <arg>      Pass argument <arg> to the backend.\n");
 	printf("  -v[level]     Print more log messages.\n");
 	printf("  -V, --version Display version information and exit.\n");
 	printf("  -h, --help    Display this help and exit.\n");
@@ -200,6 +201,8 @@ int main(int argc, char **argv) {
 	bool link_only_opt = false;
 	int backend_opt = 0;
 	char *output_file_name_opt = NULL;
+	int backend_argc = 0;
+	char **backend_argv = NULL;
 	int verbose_opt = 0;
 	bool version_opt = false;
 	bool help_opt = false;
@@ -262,6 +265,11 @@ int main(int argc, char **argv) {
 				break;
 			case 'o':
 				output_file_name_opt = optarg;
+				break;
+			case 'B':
+				backend_argc++;
+				backend_argv = xrealloc(backend_argv, sizeof(char *) * backend_argc);
+				backend_argv[backend_argc - 1] = optarg;
 				break;
 			case 'v':
 				if (optarg == NULL) {
@@ -419,7 +427,7 @@ int main(int argc, char **argv) {
 				return ret;
 			}
 		} else {
-			ret = backends[backend_opt].fn(output_file_name_opt, &intermediate_file);
+			ret = backends[backend_opt].fn(output_file_name_opt, &intermediate_file, backend_argc, backend_argv);
 			if (ret) {
 				return ret;
 			}
