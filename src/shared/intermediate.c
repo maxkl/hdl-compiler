@@ -14,52 +14,40 @@ struct intermediate_block *intermediate_block_create(const char *name) {
 
 void intermediate_block_destroy(struct intermediate_block *block) {
 	xfree(block->name);
-	xfree(block->inputs);
-	xfree(block->outputs);
 	xfree(block->statements);
 	xfree(block);
 }
 
 uint32_t intermediate_block_allocate_signals(struct intermediate_block *block, uint32_t count) {
-	uint32_t start = block->next_signal;
+	uint32_t base_signal = block->next_signal;
 	block->next_signal += count;
-	return start;
+	return base_signal;
 }
 
-uint32_t intermediate_block_add_input(struct intermediate_block *block, const char *name, uint32_t width) {
-	if (block->statement_count > 0) {
-		fprintf(stderr, "Can't add input after adding statements\n");
+uint32_t intermediate_block_allocate_input_signals(struct intermediate_block *block, uint32_t count) {
+	if (block->output_signals > 0 || block->statement_count > 0) {
+		fprintf(stderr, "Can't add input signals after adding output signals or statements\n");
 		return 0;
 	}
 
-	block->input_count++;
-	block->inputs = xrealloc(block->inputs, sizeof(struct intermediate_input) * block->input_count);
-	struct intermediate_input *input = &block->inputs[block->input_count - 1];
-	input->name = xstrdup(name);
-	input->width = width;
+	uint32_t base_signal = block->next_signal;
+	block->input_signals += count;
+	block->next_signal += count;
 
-	uint32_t signal = block->next_signal;
-	block->next_signal += width;
-
-	return signal;
+	return base_signal;
 }
 
-uint32_t intermediate_block_add_output(struct intermediate_block *block, const char *name, uint32_t width) {
+uint32_t intermediate_block_allocate_output_signals(struct intermediate_block *block, uint32_t count) {
 	if (block->statement_count > 0) {
-		fprintf(stderr, "Can't add output after adding statements\n");
+		fprintf(stderr, "Can't add output signals after adding statements\n");
 		return 0;
 	}
 
-	block->output_count++;
-	block->outputs = xrealloc(block->outputs, sizeof(struct intermediate_output) * block->output_count);
-	struct intermediate_output *output = &block->outputs[block->output_count - 1];
-	output->name = xstrdup(name);
-	output->width = width;
+	uint32_t base_signal = block->next_signal;
+	block->output_signals += count;
+	block->next_signal += count;
 
-	uint32_t signal = block->next_signal;
-	block->next_signal += width;
-
-	return signal;
+	return base_signal;
 }
 
 struct intermediate_statement *intermediate_block_add_statement(struct intermediate_block *block, uint16_t op, uint16_t size) {
@@ -135,25 +123,7 @@ void intermediate_print(FILE *stream, struct intermediate_block **blocks, uint32
 	for (uint32_t i = 0; i < block_count; i++) {
 		struct intermediate_block *block = blocks[i];
 
-		fprintf(stream, "Block: name=\"%s\", inputs=%u, outputs=%u, statements=%u\n", block->name, block->input_count, block->output_count, block->statement_count);
-
-		uint32_t signal_id = 0;
-
-		for (size_t j = 0; j < block->input_count; j++) {
-			struct intermediate_input *input = &block->inputs[j];
-
-			fprintf(stream, "  Input: name=\"%s\", width=%u, id=%u\n", input->name, input->width, signal_id);
-
-			signal_id += input->width;
-		}
-
-		for (size_t j = 0; j < block->output_count; j++) {
-			struct intermediate_output *output = &block->outputs[j];
-
-			fprintf(stream, "  Output: name=\"%s\", width=%u, id=%u\n", output->name, output->width, signal_id);
-
-			signal_id += output->width;
-		}
+		fprintf(stream, "Block: name=\"%s\", input signals=%u, output signals=%u, statements=%u\n", block->name, block->input_signals, block->output_signals, block->statement_count);
 
 		for (size_t j = 0; j < block->statement_count; j++) {
 			struct intermediate_statement *stmt = &block->statements[j];

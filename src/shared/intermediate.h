@@ -20,20 +20,6 @@ enum intermediate_op {
 	INTERMEDIATE_OP_MUX
 };
 
-struct intermediate_input {
-	char *name;
-	uint32_t name_index;
-
-	uint32_t width;
-};
-
-struct intermediate_output {
-	char *name;
-	uint32_t name_index;
-
-	uint32_t width;
-};
-
 struct intermediate_statement {
 	uint16_t op;
 	uint16_t size;
@@ -47,10 +33,8 @@ struct intermediate_block {
 	char *name;
 	uint32_t name_index;
 
-	uint32_t input_count;
-	struct intermediate_input *inputs;
-	uint32_t output_count;
-	struct intermediate_output *outputs;
+	uint32_t input_signals;
+	uint32_t output_signals;
 	uint32_t statement_count;
 	struct intermediate_statement *statements;
 	uint32_t next_signal;
@@ -59,8 +43,8 @@ struct intermediate_block {
 struct intermediate_block *intermediate_block_create(const char *name);
 void intermediate_block_destroy(struct intermediate_block *block);
 uint32_t intermediate_block_allocate_signals(struct intermediate_block *block, uint32_t count);
-uint32_t intermediate_block_add_input(struct intermediate_block *block, const char *name, uint32_t width);
-uint32_t intermediate_block_add_output(struct intermediate_block *block, const char *name, uint32_t width);
+uint32_t intermediate_block_allocate_input_signals(struct intermediate_block *block, uint32_t count);
+uint32_t intermediate_block_allocate_output_signals(struct intermediate_block *block, uint32_t count);
 struct intermediate_statement *intermediate_block_add_statement(struct intermediate_block *block, uint16_t op, uint16_t size);
 
 void intermediate_statement_init(struct intermediate_statement *statement, uint16_t op, uint16_t size);

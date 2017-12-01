@@ -236,7 +236,7 @@ static int generate_block(struct ast_node *block, struct intermediate_block ***b
         struct symbol_type *symbol_type = symbol->type;
 
         if (symbol_type->type == SYMBOL_TYPE_IN) {
-            symbol->signal = intermediate_block_add_input(intermediate_block, symbol->name, symbol_type->width);
+            symbol->signal = intermediate_block_allocate_input_signals(intermediate_block, symbol_type->width);
         }
     }
 
@@ -245,7 +245,7 @@ static int generate_block(struct ast_node *block, struct intermediate_block ***b
         struct symbol_type *symbol_type = symbol->type;
 
         if (symbol_type->type == SYMBOL_TYPE_OUT) {
-            symbol->signal = intermediate_block_add_output(intermediate_block, symbol->name, symbol_type->width);
+            symbol->signal = intermediate_block_allocate_output_signals(intermediate_block, symbol_type->width);
         }
     }
 

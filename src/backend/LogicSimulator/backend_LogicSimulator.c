@@ -18,18 +18,7 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 
 	struct intermediate_block *block = blocks[0];
 
-	uint32_t input_signal_count = 0;
-	uint32_t output_signal_count = 0;
-
-	for (uint32_t i = 0; i < block->input_count; i++) {
-		input_signal_count += block->inputs[0].width;
-	}
-
-	for (uint32_t i = 0; i < block->output_count; i++) {
-		output_signal_count += block->outputs[0].width;
-	}
-
-	uint32_t signal_count = input_signal_count + output_signal_count;
+	uint32_t signal_count = block->input_signals + block->output_signals;
 
 	for (uint32_t i = 0; i < block->statement_count; i++) {
 		struct intermediate_statement *stmt = &block->statements[i];
@@ -118,19 +107,19 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 	}
 
 	if (generate_io_components) {
-		for (uint32_t i = 0; i < input_signal_count; i++) {
+		for (uint32_t i = 0; i < block->input_signals; i++) {
 			if (added_component) {
 				fprintf(f, ",");
 			}
-			fprintf(f, "{\"type\":\"togglebutton\",\"x\":%i,\"y\":%i}", -8, i * 6 - input_signal_count * 6);
+			fprintf(f, "{\"type\":\"togglebutton\",\"x\":%i,\"y\":%i}", -8, i * 6 - block->input_signals * 6);
 			added_component = true;
 		}
 
-		for (uint32_t i = 0; i < output_signal_count; i++) {
+		for (uint32_t i = 0; i < block->output_signals; i++) {
 			if (added_component) {
 				fprintf(f, ",");
 			}
-			fprintf(f, "{\"type\":\"led\",\"x\":%u,\"y\":%i,\"offColor\":\"#888\",\"onColor\":\"#e00\"}", (input_signal_count + output_signal_count) * 2 + 1, i * 6 - output_signal_count * 6);
+			fprintf(f, "{\"type\":\"led\",\"x\":%u,\"y\":%i,\"offColor\":\"#888\",\"onColor\":\"#e00\"}", (block->input_signals + block->output_signals) * 2 + 1, i * 6 - block->output_signals * 6);
 			added_component = true;
 		}
 	}
@@ -250,9 +239,9 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 	}
 
 	if (generate_io_components) {
-		for (uint32_t i = 0; i < input_signal_count; i++) {
+		for (uint32_t i = 0; i < block->input_signals; i++) {
 			int x = i * 2;
-			int y = i * 6 - input_signal_count * 6 + 2;
+			int y = i * 6 - block->input_signals * 6 + 2;
 
 			if (added_connection) {
 				fprintf(f, ",");
@@ -265,14 +254,14 @@ static int generate_circuit(FILE *f, struct intermediate_block **blocks, uint32_
 			added_connection = true;
 		}
 
-		for (uint32_t i = 0; i < output_signal_count; i++) {
-			int x = (input_signal_count + i) * 2;
-			int y = i * 6 - output_signal_count * 6 + 2;
+		for (uint32_t i = 0; i < block->output_signals; i++) {
+			int x = (block->input_signals + i) * 2;
+			int y = i * 6 - block->output_signals * 6 + 2;
 
 			if (added_connection) {
 				fprintf(f, ",");
 			}
-			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, (input_signal_count + output_signal_count) * 2, y);
+			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, (block->input_signals + block->output_signals) * 2, y);
 
 			fprintf(f, ",");
 			fprintf(f, "{\"x1\":%i,\"y1\":%i,\"x2\":%i,\"y2\":%i}", x, y, x, 0);
