@@ -3,7 +3,7 @@
 
 Compiler for a self-invented hardware description language.
 
-The front end uses a hand-written recursive descent parser (LL(1)) to parse the source language, does semantic analysis and emits intermediate code. This intermediate code is then linked and can be translated to different target formats.
+The front end uses a hand-written recursive descent parser (`LL(1)`) to parse the source language, does semantic analysis and emits intermediate code. This intermediate code is then linked and can be translated to different target formats.
 
 ## Compiler usage
 
@@ -23,6 +23,7 @@ Options:
   -b <backend>  Use a specific backend.
                 Available backends are: 'LogicSimulator' (default), 'csim'
   -o <file>     Write output to <file>.
+  -B <arg>      Pass argument <arg> to the backend.
   -v[level]     Print more log messages.
   -V, --version Display version information and exit.
   -h, --help    Display this help and exit.
@@ -71,7 +72,7 @@ block main {
 ```
 it will have 3 input signals and 3 output signals. The leftmost signal corresponds to input `a`. The next two signals correspond to input `b` with the least-significant bit first. The fourth signal from the left is output `q`, followed by two signals for output `r`.
 
-The generated circuit does not have any input/output components, but you can add buttons and LEDs yourself and connect them to the appropriate signals.
+The backend generates toggle buttons and LEDs for the inputs/outputs of the main block. You can pass it the flag `--no-io-components` (e.g. `hdlc -B --no-io-components circuit.hdl`) if you don't want that.
 
 ### Invocation examples
 
@@ -114,10 +115,20 @@ block some_block {
 }
 ```
 
+Each circuit has to have exactly one block named `"main"`.
+
 Following the declarations, the behaviour of the block is specified. You can write simple assignment statements, with an output on the left and an expression on the right. Available operators are the binary operators `&` (AND), `|` (OR) and `^` (XOR) and the unary operator `~` (NOT). If the operands are multiple bits wide, the operators apply to each bit individually. Sub-expressions can be parenthesized. Operands can either be number literals or identifiers. You can extract a single or multiple bits from a signal with "array accesses". Use `id[index]` to access a single bit and `id[index:index]` to access a range of bits (the left index must be the higher one). To access inputs and outputs of a sub-block, use the name of the block followed by a dot and the input/output name: `block_name.input_or_output_name`.
 
 As a complete example take this 4-bit adder, which combines four single-bit adders:
 ```
+block adder {
+    in a, b, c_in;
+    out s, c_out;
+
+    s = a ^ b ^ c_in;
+    c_out = a & b | c_in & (a ^ b);
+}
+
 block main {
     in[4] a, b;
     in c_in;
@@ -146,14 +157,6 @@ block main {
     s[3] = adder3.s;
 
     c_out = adder3.c_out;
-}
-
-block adder {
-    in a, b, c_in;
-    out s, c_out;
-
-    s = a ^ b ^ c_in;
-    c_out = a & b | c_in & (a ^ b);
 }
 ```
 
