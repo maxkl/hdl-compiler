@@ -35,6 +35,8 @@ struct intermediate_block {
 
 	uint32_t input_signals;
 	uint32_t output_signals;
+	uint32_t block_count;
+	struct intermediate_block **blocks;
 	uint32_t statement_count;
 	struct intermediate_statement *statements;
 	uint32_t next_signal;
@@ -45,6 +47,7 @@ void intermediate_block_destroy(struct intermediate_block *block);
 uint32_t intermediate_block_allocate_signals(struct intermediate_block *block, uint32_t count);
 uint32_t intermediate_block_allocate_input_signals(struct intermediate_block *block, uint32_t count);
 uint32_t intermediate_block_allocate_output_signals(struct intermediate_block *block, uint32_t count);
+uint32_t intermediate_block_add_block(struct intermediate_block *block, struct intermediate_block *added_block);
 struct intermediate_statement *intermediate_block_add_statement(struct intermediate_block *block, uint16_t op, uint16_t size);
 
 void intermediate_statement_init(struct intermediate_statement *statement, uint16_t op, uint16_t size);

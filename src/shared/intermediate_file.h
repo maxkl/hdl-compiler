@@ -5,7 +5,7 @@
 
 #include <shared/intermediate.h>
 
-#define INTERMEDIATE_FILE_VERSION 1
+#define INTERMEDIATE_FILE_VERSION 2
 
 struct intermediate_file {
 	struct intermediate_block **blocks;

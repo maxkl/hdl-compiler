@@ -25,7 +25,7 @@ void symbol_type_print(FILE *stream, struct symbol_type *symbol_type) {
 			fprintf(stream, "out");
 			break;
 		case SYMBOL_TYPE_BLOCK:
-			fprintf(stream, "block %s", symbol_type->data.block_name);
+			fprintf(stream, "block %s", symbol_type->data.block->data.identifier);
 			break;
 	}
 

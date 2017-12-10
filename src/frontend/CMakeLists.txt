@@ -10,6 +10,8 @@ set(sources ${sources}
 	"${CMAKE_CURRENT_SOURCE_DIR}/ast.h"
 	"${CMAKE_CURRENT_SOURCE_DIR}/symbol.c"
 	"${CMAKE_CURRENT_SOURCE_DIR}/symbol.h"
+	"${CMAKE_CURRENT_SOURCE_DIR}/type_symbol.c"
+	"${CMAKE_CURRENT_SOURCE_DIR}/type_symbol.h"
 	"${CMAKE_CURRENT_SOURCE_DIR}/symbol_table.c"
 	"${CMAKE_CURRENT_SOURCE_DIR}/symbol_table.h"
 	"${CMAKE_CURRENT_SOURCE_DIR}/analyzer.c"

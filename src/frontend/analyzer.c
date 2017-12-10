@@ -236,7 +236,17 @@ static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struc
 
     struct ast_node *property_identifier = behaviour_identifier->children[1];
     if (property_identifier == NULL) {
-    	//
+        switch (symbol_type->type) {
+            case SYMBOL_TYPE_IN:
+                type->access_type = EXPRESSION_TYPE_READ;
+                break;
+            case SYMBOL_TYPE_OUT:
+                type->access_type = EXPRESSION_TYPE_WRITE;
+                break;
+            case SYMBOL_TYPE_BLOCK:
+                fprintf(stderr, "Block used as signal\n");
+                return -1;
+        }
     } else {
     	if (property_identifier->type != AST_IDENTIFIER) {
         	return -1;
@@ -249,20 +259,30 @@ static int analyze_behaviour_identifier(struct symbol_table *symbol_table, struc
     		return -1;
     	}
 
-    	fprintf(stderr, "Property access not supported\n");
-    	return -1;
-    }
+        char *property_name = property_identifier->data.identifier;
 
-    switch (symbol_type->type) {
-    	case SYMBOL_TYPE_IN:
-    		type->access_type = EXPRESSION_TYPE_READ;
-    		break;
-    	case SYMBOL_TYPE_OUT:
-    		type->access_type = EXPRESSION_TYPE_WRITE;
-    		break;
-    	case SYMBOL_TYPE_BLOCK:
-    		fprintf(stderr, "Block used as signal\n");
-    		return -1;
+        struct symbol *property_symbol = symbol_table_find(symbol_type->data.block->semantic_data.symbol_table, property_name);
+
+        if (property_symbol == NULL) {
+            fprintf(stderr, "\"%s\" has no property \"%s\"\n", signal_name, property_name);
+            return -1;
+        }
+
+        struct symbol_type *property_symbol_type = property_symbol->type;
+
+        switch (property_symbol_type->type) {
+            case SYMBOL_TYPE_IN:
+                type->access_type = EXPRESSION_TYPE_WRITE;
+                break;
+            case SYMBOL_TYPE_OUT:
+                type->access_type = EXPRESSION_TYPE_READ;
+                break;
+            default:
+                fprintf(stderr, "Property \"%s\" of \"%s\" is not accessible from other blocks\n", property_name, signal_name);
+                return -1;
+        }
+
+        symbol_type = property_symbol_type;
     }
 
     struct ast_node *subscript = behaviour_identifier->children[2];
@@ -452,8 +472,22 @@ static int analyze_type(struct symbol_table *symbol_table, struct ast_node *type
     			return -1;
     		}
 
+            char *block_name = type_specifier->children[0]->data.identifier;
+
+            struct type_symbol *block_symbol = symbol_table_find_type_recursive(symbol_table, block_name);
+
+            if (!block_symbol) {
+                fprintf(stderr, "There is no block named \"%s\"\n", block_name);
+                return -1;
+            }
+
+            if (block_symbol->type != TYPE_SYMBOL_BLOCK) {
+                fprintf(stderr, "Type \"%s\" is not a block\n", block_name);
+                return -1;
+            }
+
     		symbol_type = symbol_type_create(SYMBOL_TYPE_BLOCK, 0);
-    		symbol_type->data.block_name = xstrdup(type_specifier->children[0]->data.identifier);
+            symbol_type->data.block = block_symbol->data.block;
 
     		break;
     	default:
@@ -557,6 +591,12 @@ static int analyze_block(struct symbol_table *symbol_table, struct ast_node *blo
         return -1;
     }
 
+    char *name = block->children[0]->data.identifier;
+
+    struct type_symbol *block_symbol = type_symbol_create(name, TYPE_SYMBOL_BLOCK);
+    block_symbol->data.block = block;
+    symbol_table_add_type(symbol_table, block_symbol);
+
     block->semantic_data.symbol_table = symbol_table_create(symbol_table);
 
     ret = analyze_declarations(block->semantic_data.symbol_table, block->children[1]);
@@ -602,8 +642,10 @@ static int analyze_blocks(struct symbol_table *symbol_table, struct ast_node *bl
 
 int analyzer_analyze(struct ast_node *ast_root) {
 	int ret;
+
+    struct symbol_table *global_symbol_table = symbol_table_create(NULL);
     
-    ret = analyze_blocks(NULL, ast_root);
+    ret = analyze_blocks(global_symbol_table, ast_root);
     if (ret) {
     	return -1;
     }

@@ -148,12 +148,11 @@ static int generate_behaviour_identifier(struct ast_node *behaviour_identifier, 
     if (property_identifier == NULL) {
     	//
     } else {
-    	if (property_identifier->type != AST_IDENTIFIER) {
-        	return -1;
-        }
+        char *property_name = property_identifier->data.identifier;
 
-    	fprintf(stderr, "Property access not supported\n");
-    	return -1;
+        struct symbol *property_symbol = symbol_table_find(symbol_type->data.block->semantic_data.symbol_table, property_name);
+
+    	signal += property_symbol->signal;
     }
 
     struct ast_node *subscript = behaviour_identifier->children[2];
@@ -249,6 +248,15 @@ static int generate_block(struct ast_node *block, struct intermediate_block ***b
         }
     }
 
+    for (hashtable_iterator_init(&it, symbol_table->symbols); !hashtable_iterator_finished(&it); hashtable_iterator_next(&it)) {
+        struct symbol *symbol = hashtable_iterator_value(&it);
+        struct symbol_type *symbol_type = symbol->type;
+
+        if (symbol_type->type == SYMBOL_TYPE_BLOCK) {
+            symbol->signal = intermediate_block_add_block(intermediate_block, symbol_type->data.block->intermediate_block);
+        }
+    }
+
     ret = generate_behaviour_statements(block->children[2], symbol_table, intermediate_block);
     if (ret) {
         intermediate_block_destroy(intermediate_block);
@@ -258,6 +266,8 @@ static int generate_block(struct ast_node *block, struct intermediate_block ***b
     (*block_count)++;
     *blocks = xrealloc(*blocks, sizeof(struct intermediate_block *) * *block_count);
     (*blocks)[*block_count - 1] = intermediate_block;
+
+    block->intermediate_block = intermediate_block;
 
     return 0;
 }

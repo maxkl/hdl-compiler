@@ -58,6 +58,7 @@ struct ast_node {
             uint64_t end_index;
         } subscript;
     } semantic_data;
+    struct intermediate_block *intermediate_block;
 };
 
 struct ast_node *ast_create_node(enum ast_node_type type);

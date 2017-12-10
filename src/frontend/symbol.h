@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "ast.h"
+
 enum symbol_type_type {
 	SYMBOL_TYPE_IN,
 	SYMBOL_TYPE_OUT,
@@ -15,7 +17,7 @@ struct symbol_type {
 	enum symbol_type_type type;
 	uint64_t width;
 	union {
-		char *block_name;
+		struct ast_node *block;
 	} data;
 };
 

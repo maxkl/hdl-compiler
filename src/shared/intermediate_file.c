@@ -316,6 +316,12 @@ enum error parse_block(FILE *f, struct intermediate_block *block) {
         return err;
     }
 
+    uint32_t block_count;
+    err = file_read_32(f, &block_count);
+    if (err) {
+        return err;
+    }
+
     uint32_t statement_count;
     err = file_read_32(f, &statement_count);
     if (err) {
@@ -325,10 +331,14 @@ enum error parse_block(FILE *f, struct intermediate_block *block) {
     block->name_index = name_index;
     block->input_signals = input_signals;
     block->output_signals = output_signals;
+    block->block_count = block_count;
+    block->blocks = block->block_count > 0 ? xcalloc(block->block_count, sizeof(struct intermediate_block *)) : NULL;
     block->statement_count = statement_count;
     block->statements = block->statement_count > 0 ? xcalloc(block->statement_count, sizeof(struct intermediate_statement)) : NULL;
 
     block->next_signal = block->input_signals + block->output_signals;
+
+    // TODO: blocks
 
     for (uint32_t i = 0; i < statement_count; i++) {
         err = parse_block_statement(f, &block->statements[i]);
@@ -358,10 +368,17 @@ enum error write_block(FILE *f, struct intermediate_block *block, struct string_
         return err;
     }
 
+    err = file_write_32(f, block->block_count);
+    if (err) {
+        return err;
+    }
+
     err = file_write_32(f, block->statement_count);
     if (err) {
         return err;
     }
+
+    // TODO: blocks
 
     for (uint32_t i = 0; i < block->statement_count; i++) {
         err = write_block_statement(f, &block->statements[i]);
