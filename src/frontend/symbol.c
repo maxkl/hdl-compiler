@@ -50,5 +50,5 @@ void symbol_destroy(struct symbol *symbol) {
 
 void symbol_print(FILE *stream, struct symbol *symbol) {
 	symbol_type_print(stream, symbol->type);
-	fprintf(stream, " %s", symbol->name);
+	fprintf(stream, " %s @ %u", symbol->name, symbol->signal);
 }
