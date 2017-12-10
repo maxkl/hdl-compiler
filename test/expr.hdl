@@ -1,4 +1,0 @@
-
-block exprtest {
-    _ = a & b & c;
-}

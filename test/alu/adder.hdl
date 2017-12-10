@@ -1,8 +1,0 @@
-
-block adder {
-    in a, b, c_in;
-    out s, c_out;
-
-    s = a ^ b ^ c_in;
-    c_out = a & b | c_in & (a ^ b);
-}
