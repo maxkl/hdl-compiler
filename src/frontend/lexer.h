@@ -73,6 +73,7 @@ void lexer_destroy(struct lexer *lexer);
 
 struct lexer_token *lexer_create_token();
 void lexer_destroy_token(struct lexer_token *token);
+void lexer_print_token(FILE *stream, struct lexer_token *token);
 
 int lexer_read_next_token(struct lexer *lexer, struct lexer_token **token);
 

@@ -99,6 +99,23 @@ void lexer_destroy_token(struct lexer_token *token) {
     xfree(token);
 }
 
+void lexer_print_token(FILE *stream, struct lexer_token *token) {
+    fprintf(stream, "%s", lexer_token_type_name(token->type));
+    switch (token->type) {
+        case TOKEN_IDENTIFIER:
+            fprintf(stream, " \"%s\"", token->value.identifier);
+            break;
+        case TOKEN_NUMBER:
+            fprintf(stream, " %lu#%lu", token->value.number.value, token->value.number.width);
+            break;
+        default:
+            break;
+    }
+    fprintf(stream, " at ");
+    lexer_print_location(stream, token->location);
+    fprintf(stream, "\n");
+}
+
 int lexer_getc(struct lexer *lexer) {
     lexer->last_c = lexer->c;
     lexer_copy_location(lexer->last_location, lexer->location);
@@ -126,11 +143,21 @@ int lexer_read_next_token(struct lexer *lexer, struct lexer_token **token_out) {
 
     int c;
 
-    c = lexer_getc(lexer);
-
-    while (isspace(c)) {
+    do {
         c = lexer_getc(lexer);
-    }
+
+        // Skip comments starting with '//'
+        if (c == '/') {
+            if (lexer_getc(lexer) == '/') {
+                // Comments end with a line break
+                do {
+                    c = lexer_getc(lexer);
+                } while (c != '\n');
+            } else {
+                lexer_ungetc(lexer);
+            }
+        }
+    } while (isspace(c));
 
     lexer_copy_location(token->location, lexer->location);
 
