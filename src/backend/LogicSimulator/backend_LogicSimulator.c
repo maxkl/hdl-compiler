@@ -463,13 +463,13 @@ int backend_LogicSimulator_run(const char *output_filename, struct intermediate_
 	int ret;
 
 	struct options options = {
-		.io_components = false
+		.io_components = true
 	};
 
 	for (int i = 0; i < argc; i++) {
 		char *arg = argv[i];
-		if (strcmp(arg, "--generate-io-components") == 0) {
-			options.io_components = true;
+		if (strcmp(arg, "--no-io-components") == 0) {
+			options.io_components = false;
 		} else {
 			fprintf(stderr, "error: unrecognized backend option '%s'\n", arg);
 			return 1;
