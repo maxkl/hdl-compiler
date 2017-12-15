@@ -220,18 +220,40 @@ static int generate_behaviour_statements(struct ast_node *behaviour_statements, 
     return 0;
 }
 
+static int compare_symbol_insertion_order(const void *a_, const void *b_) {
+    const struct symbol *a = *((const struct symbol **) a_);
+    const struct symbol *b = *((const struct symbol **) b_);
+    return (int) a->insertion_order - (int) b->insertion_order;
+}
+
 static int generate_block(struct ast_node *block, struct intermediate_block ***blocks, size_t *block_count) {
     int ret;
 
     struct symbol_table *symbol_table = block->semantic_data.symbol_table;
+    size_t symbol_count = symbol_table->symbols->size;
+
+    // Collect symbols from symbol_table
+    struct symbol **symbols = xcalloc(symbol_count, sizeof(struct symbol *));
+
+    struct hashtable_iterator it;
+    size_t i = 0;
+    for (hashtable_iterator_init(&it, symbol_table->symbols); !hashtable_iterator_finished(&it); hashtable_iterator_next(&it)) {
+        struct symbol *symbol = hashtable_iterator_value(&it);
+        
+        symbols[i] = symbol;
+
+        i++;
+    }
+
+    // Sort the symbols by insertion order to preserve this order in the intermediate code
+    qsort(symbols, symbol_count, sizeof(struct symbol *), compare_symbol_insertion_order);
 
     struct ast_node *identifier = block->children[0];
 
     struct intermediate_block *intermediate_block = intermediate_block_create(identifier->data.identifier);
 
-    struct hashtable_iterator it;
-    for (hashtable_iterator_init(&it, symbol_table->symbols); !hashtable_iterator_finished(&it); hashtable_iterator_next(&it)) {
-        struct symbol *symbol = hashtable_iterator_value(&it);
+    for (size_t i = 0; i < symbol_count; i++) {
+        struct symbol *symbol = symbols[i];
         struct symbol_type *symbol_type = symbol->type;
 
         if (symbol_type->type == SYMBOL_TYPE_IN) {
@@ -239,8 +261,8 @@ static int generate_block(struct ast_node *block, struct intermediate_block ***b
         }
     }
 
-    for (hashtable_iterator_init(&it, symbol_table->symbols); !hashtable_iterator_finished(&it); hashtable_iterator_next(&it)) {
-        struct symbol *symbol = hashtable_iterator_value(&it);
+    for (size_t i = 0; i < symbol_count; i++) {
+        struct symbol *symbol = symbols[i];
         struct symbol_type *symbol_type = symbol->type;
 
         if (symbol_type->type == SYMBOL_TYPE_OUT) {
@@ -248,8 +270,8 @@ static int generate_block(struct ast_node *block, struct intermediate_block ***b
         }
     }
 
-    for (hashtable_iterator_init(&it, symbol_table->symbols); !hashtable_iterator_finished(&it); hashtable_iterator_next(&it)) {
-        struct symbol *symbol = hashtable_iterator_value(&it);
+    for (size_t i = 0; i < symbol_count; i++) {
+        struct symbol *symbol = symbols[i];
         struct symbol_type *symbol_type = symbol->type;
 
         if (symbol_type->type == SYMBOL_TYPE_BLOCK) {

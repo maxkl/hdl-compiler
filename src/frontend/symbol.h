@@ -25,6 +25,7 @@ struct symbol {
 	char *name;
 	struct symbol_type *type;
 	uint32_t signal;
+	unsigned insertion_order;
 };
 
 struct symbol_type *symbol_type_create(enum symbol_type_type type, uint64_t width);

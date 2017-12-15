@@ -11,6 +11,7 @@ struct symbol_table {
 	struct symbol_table *parent;
 	struct hashtable *symbols;
 	struct hashtable *types;
+	unsigned symbol_insertion_index;
 };
 
 struct symbol_table *symbol_table_create();

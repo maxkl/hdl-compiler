@@ -17,6 +17,7 @@ void symbol_table_destroy(struct symbol_table *symbol_table) {
 }
 
 void symbol_table_add(struct symbol_table *symbol_table, struct symbol *symbol) {
+	symbol->insertion_order = symbol_table->symbol_insertion_index++;
 	hashtable_set(symbol_table->symbols, symbol->name, symbol);
 }
 
