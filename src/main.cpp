@@ -159,7 +159,7 @@ int detectInputFileType(const std::string &path, int defaultType) {
     throw CompilerError("Unrecognized input file type '" + *inputFileTypeStr + "' (auto-detected)");
 }
 
-int main(int argc, char **argv) {
+int main_(int argc, char **argv) {
 	std::string programName = basename(argv[0]);
 
 	int inputFileTypeOption = -1;
@@ -295,7 +295,7 @@ int main(int argc, char **argv) {
 	}
 
 	if (verboseOption > 0) {
-	    std::cout << "enabled verbose logging, level " << verboseOption << "\n";
+	    std::cerr << "enabled verbose logging, level " << verboseOption << "\n";
 	}
 
 	if (inputFiles.empty()) {
@@ -351,4 +351,13 @@ int main(int argc, char **argv) {
 	}
 
 	return 0;
+}
+
+int main(int argc, char **argv) {
+    try {
+        return main_(argc, argv);
+    } catch (const std::exception &e) {
+        std::cerr << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
 }
