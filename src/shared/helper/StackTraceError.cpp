@@ -6,12 +6,20 @@
 #include "stacktrace.h"
 
 StackTraceError::StackTraceError(const std::string &msg) {
-    stacktrace = backtrace();
+    stacktrace_ = backtrace();
 
     message = msg;
-    for (const auto &line : stacktrace) {
+
+    // Only append stack trace to message for debug builds
+#ifndef NDEBUG
+    for (const auto &line : stacktrace_) {
         message += "\n" + line;
     }
+#endif
+}
+
+const std::vector<std::string> StackTraceError::stacktrace() {
+    return stacktrace_;
 }
 
 const char *StackTraceError::what() const noexcept {

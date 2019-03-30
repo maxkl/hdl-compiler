@@ -11,4 +11,4 @@ add_executable(hdlc
 	"main.cpp"
 )
 target_link_libraries(hdlc PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(hdlc PRIVATE debug unwind)
+target_link_libraries(hdlc PRIVATE unwind)
