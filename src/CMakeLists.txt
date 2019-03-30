@@ -8,5 +8,7 @@ add_subdirectory("backend/")
 
 add_executable(hdlc
 	${sources}
-	"main.c"
+	"main.cpp"
 )
+target_link_libraries(hdlc PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(hdlc PRIVATE debug unwind)

@@ -1,11 +1,11 @@
 
 set(sources ${sources}
-	"${CMAKE_CURRENT_SOURCE_DIR}/mem.c"
-	"${CMAKE_CURRENT_SOURCE_DIR}/mem.h"
-	"${CMAKE_CURRENT_SOURCE_DIR}/buffer.h"
-	"${CMAKE_CURRENT_SOURCE_DIR}/log.h"
-	"${CMAKE_CURRENT_SOURCE_DIR}/hashtable.c"
-	"${CMAKE_CURRENT_SOURCE_DIR}/hashtable.h"
+	"${CMAKE_CURRENT_SOURCE_DIR}/BufferHelper.h"
+	"${CMAKE_CURRENT_SOURCE_DIR}/string_format.h"
+	"${CMAKE_CURRENT_SOURCE_DIR}/stacktrace.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/stacktrace.h"
+	"${CMAKE_CURRENT_SOURCE_DIR}/StackTraceError.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/StackTraceError.h"
 )
 
 set(sources ${sources} PARENT_SCOPE)
