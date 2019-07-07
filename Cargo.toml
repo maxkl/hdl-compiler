@@ -1,0 +1,11 @@
+[package]
+name = "hdl-compiler"
+version = "0.1.0"
+authors = ["maxkl <max@maxkl.de>"]
+edition = "2018"
+
+[dependencies]
+failure = "0.1.5"
+
+[dev-dependencies]
+matches = "0.1.8"
