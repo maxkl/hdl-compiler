@@ -58,21 +58,28 @@ pub enum TokenData {
 
     Identifier(String),
     Number(u64),
-    String(String),
 
-    VarKeyword,
-    PrintKeyword,
-
+    Dot,
+    Comma,
     Semicolon,
-    LeftParenthesis,
-    RightParenthesis,
+    Colon,
+    Equals,
+
+    AND,
+    OR,
+    XOR,
+    NOT,
+
     LeftBrace,
     RightBrace,
     LeftBracket,
     RightBracket,
-    Assign,
-    Minus,
-    Plus,
+    LeftParenthesis,
+    RightParenthesis,
+
+    InKeyword,
+    OutKeyword,
+    BlockKeyword,
 }
 
 /// Tokens of this type are emitted by the lexer
@@ -136,40 +143,22 @@ impl<R: Read> ILexer for Lexer<R> {
         let token_location = self.location.clone();
 
         match c {
-            // String
-            Some('"') => {
-                let mut s = String::new();
-
-                loop {
-                    c = self.get_char()?;
-
-                    match c {
-                        Some(x) => {
-                            if x != '"' {
-                                s.push(x);
-                            } else {
-                                break;
-                            }
-                        },
-                        None => {
-                            return Err(LexerError::UnexpectedEndOfFile(token_location));
-                        },
-                    }
-                }
-
-                Ok(Token::new(TokenData::String(s), token_location))
-            },
             // Simple tokens
+            Some('.') => Ok(Token::new(TokenData::Dot, token_location)),
+            Some(',') => Ok(Token::new(TokenData::Comma, token_location)),
             Some(';') => Ok(Token::new(TokenData::Semicolon, token_location)),
-            Some('(') => Ok(Token::new(TokenData::LeftParenthesis, token_location)),
-            Some(')') => Ok(Token::new(TokenData::RightParenthesis, token_location)),
+            Some(':') => Ok(Token::new(TokenData::Colon, token_location)),
+            Some('=') => Ok(Token::new(TokenData::Equals, token_location)),
+            Some('&') => Ok(Token::new(TokenData::AND, token_location)),
+            Some('|') => Ok(Token::new(TokenData::OR, token_location)),
+            Some('^') => Ok(Token::new(TokenData::XOR, token_location)),
+            Some('~') => Ok(Token::new(TokenData::NOT, token_location)),
             Some('{') => Ok(Token::new(TokenData::LeftBrace, token_location)),
             Some('}') => Ok(Token::new(TokenData::RightBrace, token_location)),
             Some('[') => Ok(Token::new(TokenData::LeftBracket, token_location)),
             Some(']') => Ok(Token::new(TokenData::RightBracket, token_location)),
-            Some('=') => Ok(Token::new(TokenData::Assign, token_location)),
-            Some('+') => Ok(Token::new(TokenData::Plus, token_location)),
-            Some('-') => Ok(Token::new(TokenData::Minus, token_location)),
+            Some('(') => Ok(Token::new(TokenData::LeftParenthesis, token_location)),
+            Some(')') => Ok(Token::new(TokenData::RightParenthesis, token_location)),
             // Tokens that can't be match'ed
             Some(x) => {
                 if x.is_alphabetic() || x == '_' {
@@ -194,8 +183,9 @@ impl<R: Read> ILexer for Lexer<R> {
                     }
 
                     match s.as_ref() {
-                        "var" => Ok(Token::new(TokenData::VarKeyword, token_location)),
-                        "print" => Ok(Token::new(TokenData::PrintKeyword, token_location)),
+                        "in" => Ok(Token::new(TokenData::InKeyword, token_location)),
+                        "out" => Ok(Token::new(TokenData::OutKeyword, token_location)),
+                        "block" => Ok(Token::new(TokenData::BlockKeyword, token_location)),
                         _ => Ok(Token::new(TokenData::Identifier(s), token_location))
                     }
                 } else if x.is_numeric() {
@@ -325,49 +315,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_string() {
-        let source_text = "\"\"";
-        let expected_tokens = vec![
-            Token::new(TokenData::String("".to_string()), Location::new(1, 1)),
-            Token::new(TokenData::EndOfFile, Location::new(1, 2)),
-        ];
-
-        let result = expect_tokens(source_text, &expected_tokens);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn unterminated_string() {
-        let source_text = "\"hello world";
-
-        let source = Cursor::new(source_text);
-
-        let mut lexer = Lexer::new(source);
-
-        let result = lexer.get_token();
-
-        assert_matches!(result, Err(LexerError::UnexpectedEndOfFile(_)));
-    }
-
-    #[test]
     fn identifier_with_digits_and_underscores() {
         let source_text = "_the_answer_is_42";
         let expected_tokens = vec![
             Token::new(TokenData::Identifier("_the_answer_is_42".to_string()), Location::new(1, 1)),
             Token::new(TokenData::EndOfFile, Location::new(1, 17)),
-        ];
-
-        let result = expect_tokens(source_text, &expected_tokens);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn keyword_in_string() {
-        let source_text = "var \"print\"";
-        let expected_tokens = vec![
-            Token::new(TokenData::VarKeyword, Location::new(1, 1)),
-            Token::new(TokenData::String("print".to_string()), Location::new(1, 5)),
-            Token::new(TokenData::EndOfFile, Location::new(1, 11)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);
@@ -415,7 +367,7 @@ mod tests {
 
     #[test]
     fn unexpected_character() {
-        let source_text = "jane.doe";
+        let source_text = "jane?doe";
 
         let source = Cursor::new(source_text);
 
@@ -430,7 +382,7 @@ mod tests {
         assert_matches!(result, Err(LexerError::UnexpectedCharacter(_, _)));
 
         if let Err(LexerError::UnexpectedCharacter(c, l)) = result {
-            assert_eq!('.', c);
+            assert_eq!('?', c);
             assert_eq!(Location::new(1, 5), l);
         }
     }
@@ -440,37 +392,48 @@ mod tests {
         let source_text = "\
 hello
 42
-\"hello world\"
-var
-print
+.
+,
 ;
-(
-)
+:
+=
+&
+|
+^
+~
 {
 }
 [
 ]
-=
--
-+";
+(
+)
+in
+out
+block
+";
 
         let expected_tokens = vec![
             Token::new(TokenData::Identifier("hello".to_string()), Location::new(1, 1)),
             Token::new(TokenData::Number(42), Location::new(2, 1)),
-            Token::new(TokenData::String("hello world".to_string()), Location::new(3, 1)),
-            Token::new(TokenData::VarKeyword, Location::new(4, 1)),
-            Token::new(TokenData::PrintKeyword, Location::new(5, 1)),
-            Token::new(TokenData::Semicolon, Location::new(6, 1)),
-            Token::new(TokenData::LeftParenthesis, Location::new(7, 1)),
-            Token::new(TokenData::RightParenthesis, Location::new(8, 1)),
-            Token::new(TokenData::LeftBrace, Location::new(9, 1)),
-            Token::new(TokenData::RightBrace, Location::new(10, 1)),
-            Token::new(TokenData::LeftBracket, Location::new(11, 1)),
-            Token::new(TokenData::RightBracket, Location::new(12, 1)),
-            Token::new(TokenData::Assign, Location::new(13, 1)),
-            Token::new(TokenData::Minus, Location::new(14, 1)),
-            Token::new(TokenData::Plus, Location::new(15, 1)),
-            Token::new(TokenData::EndOfFile, Location::new(15, 1)),
+            Token::new(TokenData::Dot, Location::new(3, 1)),
+            Token::new(TokenData::Comma, Location::new(4, 1)),
+            Token::new(TokenData::Semicolon, Location::new(5, 1)),
+            Token::new(TokenData::Colon, Location::new(6, 1)),
+            Token::new(TokenData::Equals, Location::new(7, 1)),
+            Token::new(TokenData::AND, Location::new(8, 1)),
+            Token::new(TokenData::OR, Location::new(9, 1)),
+            Token::new(TokenData::XOR, Location::new(10, 1)),
+            Token::new(TokenData::NOT, Location::new(11, 1)),
+            Token::new(TokenData::LeftBrace, Location::new(12, 1)),
+            Token::new(TokenData::RightBrace, Location::new(13, 1)),
+            Token::new(TokenData::LeftBracket, Location::new(14, 1)),
+            Token::new(TokenData::RightBracket, Location::new(15, 1)),
+            Token::new(TokenData::LeftParenthesis, Location::new(16, 1)),
+            Token::new(TokenData::RightParenthesis, Location::new(17, 1)),
+            Token::new(TokenData::InKeyword, Location::new(18, 1)),
+            Token::new(TokenData::OutKeyword, Location::new(19, 1)),
+            Token::new(TokenData::BlockKeyword, Location::new(20, 1)),
+            Token::new(TokenData::EndOfFile, Location::new(21, 0)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);
@@ -480,38 +443,44 @@ print
     #[test]
     fn simple_program() {
         let source_text = "\
-var x = 5;
+block and {
+    in a[8];
+    in b[8];
+    out q[8];
 
-var y = x + 3;
-
-print \"Hello World!\";
-
-print x;
-print y;";
+    out = a & b;
+}";
 
         let expected_tokens = vec![
-            Token::new(TokenData::VarKeyword, Location::new(1, 1)),
-            Token::new(TokenData::Identifier("x".to_string()), Location::new(1, 5)),
-            Token::new(TokenData::Assign, Location::new(1, 7)),
-            Token::new(TokenData::Number(5), Location::new(1, 9)),
-            Token::new(TokenData::Semicolon, Location::new(1, 10)),
-            Token::new(TokenData::VarKeyword, Location::new(3, 1)),
-            Token::new(TokenData::Identifier("y".to_string()), Location::new(3, 5)),
-            Token::new(TokenData::Assign, Location::new(3, 7)),
-            Token::new(TokenData::Identifier("x".to_string()), Location::new(3, 9)),
-            Token::new(TokenData::Plus, Location::new(3, 11)),
-            Token::new(TokenData::Number(3), Location::new(3, 13)),
-            Token::new(TokenData::Semicolon, Location::new(3, 14)),
-            Token::new(TokenData::PrintKeyword, Location::new(5, 1)),
-            Token::new(TokenData::String("Hello World!".to_string()), Location::new(5, 7)),
-            Token::new(TokenData::Semicolon, Location::new(5, 21)),
-            Token::new(TokenData::PrintKeyword, Location::new(7, 1)),
-            Token::new(TokenData::Identifier("x".to_string()), Location::new(7, 7)),
-            Token::new(TokenData::Semicolon, Location::new(7, 8)),
-            Token::new(TokenData::PrintKeyword, Location::new(8, 1)),
-            Token::new(TokenData::Identifier("y".to_string()), Location::new(8, 7)),
-            Token::new(TokenData::Semicolon, Location::new(8, 8)),
-            Token::new(TokenData::EndOfFile, Location::new(8, 8)),
+            Token::new(TokenData::BlockKeyword, Location::new(1, 1)),
+            Token::new(TokenData::Identifier("and".to_string()), Location::new(1, 7)),
+            Token::new(TokenData::LeftBrace, Location::new(1, 11)),
+            Token::new(TokenData::InKeyword, Location::new(2, 5)),
+            Token::new(TokenData::Identifier("a".to_string()), Location::new(2, 8)),
+            Token::new(TokenData::LeftBracket, Location::new(2, 9)),
+            Token::new(TokenData::Number(8), Location::new(2, 10)),
+            Token::new(TokenData::RightBracket, Location::new(2, 11)),
+            Token::new(TokenData::Semicolon, Location::new(2, 12)),
+            Token::new(TokenData::InKeyword, Location::new(3, 5)),
+            Token::new(TokenData::Identifier("b".to_string()), Location::new(3, 8)),
+            Token::new(TokenData::LeftBracket, Location::new(3, 9)),
+            Token::new(TokenData::Number(8), Location::new(3, 10)),
+            Token::new(TokenData::RightBracket, Location::new(3, 11)),
+            Token::new(TokenData::Semicolon, Location::new(3, 12)),
+            Token::new(TokenData::OutKeyword, Location::new(4, 5)),
+            Token::new(TokenData::Identifier("q".to_string()), Location::new(4, 9)),
+            Token::new(TokenData::LeftBracket, Location::new(4, 10)),
+            Token::new(TokenData::Number(8), Location::new(4, 11)),
+            Token::new(TokenData::RightBracket, Location::new(4, 12)),
+            Token::new(TokenData::Semicolon, Location::new(4, 13)),
+            Token::new(TokenData::OutKeyword, Location::new(6, 5)),
+            Token::new(TokenData::Equals, Location::new(6, 9)),
+            Token::new(TokenData::Identifier("a".to_string()), Location::new(6, 11)),
+            Token::new(TokenData::AND, Location::new(6, 13)),
+            Token::new(TokenData::Identifier("b".to_string()), Location::new(6, 15)),
+            Token::new(TokenData::Semicolon, Location::new(6, 16)),
+            Token::new(TokenData::RightBrace, Location::new(7, 1)),
+            Token::new(TokenData::EndOfFile, Location::new(7, 1)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);

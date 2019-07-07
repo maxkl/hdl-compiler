@@ -33,32 +33,11 @@ impl<L: ILexer> Parser<L> {
         while !terminate {
             let token =  self.lexer.get_token()?;
 
-            match token.data {
-                TokenData::Identifier(name) => print!("Identifier({})", name),
-                TokenData::Number(value) => print!("Number({})", value),
-                TokenData::String(s) => print!("String(\"{}\")", s),
+            println!("{:?} at {}", token.data, token.location);
 
-                TokenData::VarKeyword => print!("VarKeyword"),
-                TokenData::PrintKeyword => print!("PrintKeyword"),
-
-                TokenData::Semicolon => print!("Semicolon"),
-                TokenData::LeftParenthesis => print!("LeftParenthesis"),
-                TokenData::RightParenthesis => print!("RightParenthesis"),
-                TokenData::LeftBrace => print!("LeftBrace"),
-                TokenData::RightBrace => print!("RightBrace"),
-                TokenData::LeftBracket => print!("LeftBracket"),
-                TokenData::RightBracket => print!("RightBracket"),
-                TokenData::Assign => print!("Assign"),
-                TokenData::Plus => print!("Plus"),
-                TokenData::Minus => print!("Minus"),
-
-                TokenData::EndOfFile => {
-                    print!("EndOfFile");
-                    terminate = true;
-                }
+            if let TokenData::EndOfFile = token.data {
+                terminate = true;
             }
-
-            println!(" at {}", token.location);
         }
 
         Ok(())
