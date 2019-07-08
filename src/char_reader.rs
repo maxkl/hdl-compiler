@@ -2,6 +2,8 @@
 use std::io::BufRead;
 use std::io;
 
+use crate::ext_char::ExtChar;
+
 pub struct Chars<B: BufRead> {
     reader: CharReader<B>
 }
@@ -10,7 +12,7 @@ impl<B: BufRead> Iterator for Chars<B> {
     type Item = Result<char, io::Error>;
 
     fn next(&mut self) -> Option<Result<char, io::Error>> {
-        self.reader.read_char().transpose()
+        self.reader.read_char().map(|c| c.into()).transpose()
     }
 }
 
@@ -57,11 +59,11 @@ impl<B: BufRead> CharReader<B> {
     /// `None` is returned.
     ///
     /// The underlying `read()` might fail, in which case this method returns the error
-    pub fn read_char(&mut self) -> Result<Option<char>, io::Error> {
+    pub fn read_char(&mut self) -> Result<ExtChar, io::Error> {
         if self.line.is_none() {
             let have_next_line = self.next_line()?;
             if !have_next_line {
-                return Ok(None);
+                return Ok(ExtChar::EOF);
             }
         }
 
@@ -70,13 +72,13 @@ impl<B: BufRead> CharReader<B> {
         if self.char_index < line.len() {
             let c = line[self.char_index];
             self.char_index += 1;
-            Ok(Some(c))
+            Ok(ExtChar::Char(c))
         } else {
             let have_next_line = self.next_line()?;
             if have_next_line {
                 self.read_char()
             } else {
-                Ok(None)
+                Ok(ExtChar::EOF)
             }
         }
     }

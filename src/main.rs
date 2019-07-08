@@ -1,4 +1,5 @@
 
+mod ext_char;
 mod char_reader;
 mod lexer;
 mod parser;

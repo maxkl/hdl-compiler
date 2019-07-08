@@ -5,6 +5,8 @@ use std::{io, fmt};
 use failure::Fail;
 
 use crate::char_reader::CharReader;
+use crate::ext_char::ExtChar;
+use crate::ext_char::ExtChar::*;
 
 #[derive(Debug, Fail)]
 pub enum LexerError {
@@ -13,6 +15,18 @@ pub enum LexerError {
 
     #[fail(display = "unexpected end of file at {}", _0)]
     UnexpectedEndOfFile(Location),
+
+    #[fail(display = "number literal has no width specified after width separator at {}", _0)]
+    NumberLiteralNoWidth(Location),
+
+    #[fail(display = "number literal with width of 0 at {}", _0)]
+    NumberLiteralWidthZero(Location),
+
+    #[fail(display = "number literal with width greater than 64 at {}", _0)]
+    NumberLiteralWidthTooBig(Location),
+
+    #[fail(display = "number literal with value that doesn't fit into a register of specified width at {}", _0)]
+    NumberLiteralValueTooBig(Location),
 
     #[fail(display = "{}", _0)]
     Io(#[cause] io::Error),
@@ -57,7 +71,7 @@ pub enum TokenData {
     EndOfFile,
 
     Identifier(String),
-    Number(u64),
+    Number { value: u64, width: Option<u64> },
 
     Dot,
     Comma,
@@ -109,11 +123,11 @@ pub struct Lexer<R: Read> {
 
     /// If this field is `Some(_)`, it is returned by `get_char()` before a new character is read
     /// from `reader`
-    next_char: Option<char>,
+    next_char: Option<ExtChar>,
 
     /// Character that was returned by the last call to `get_char()`.
     /// This is used by `unget_char()`.
-    previous_char: Option<char>,
+    previous_char: Option<ExtChar>,
     /// Location of `previous_char`
     previous_location: Location,
 }
@@ -131,12 +145,9 @@ impl<R: Read> ILexer for Lexer<R> {
             c = self.get_char()?;
 
             match c {
-                Some(x) => {
-                    if !x.is_whitespace() {
-                        break;
-                    }
-                },
-                None => break,
+                Char(x) if !x.is_whitespace() => break,
+                EOF => break,
+                _ => {}
             }
         }
 
@@ -144,23 +155,23 @@ impl<R: Read> ILexer for Lexer<R> {
 
         match c {
             // Simple tokens
-            Some('.') => Ok(Token::new(TokenData::Dot, token_location)),
-            Some(',') => Ok(Token::new(TokenData::Comma, token_location)),
-            Some(';') => Ok(Token::new(TokenData::Semicolon, token_location)),
-            Some(':') => Ok(Token::new(TokenData::Colon, token_location)),
-            Some('=') => Ok(Token::new(TokenData::Equals, token_location)),
-            Some('&') => Ok(Token::new(TokenData::AND, token_location)),
-            Some('|') => Ok(Token::new(TokenData::OR, token_location)),
-            Some('^') => Ok(Token::new(TokenData::XOR, token_location)),
-            Some('~') => Ok(Token::new(TokenData::NOT, token_location)),
-            Some('{') => Ok(Token::new(TokenData::LeftBrace, token_location)),
-            Some('}') => Ok(Token::new(TokenData::RightBrace, token_location)),
-            Some('[') => Ok(Token::new(TokenData::LeftBracket, token_location)),
-            Some(']') => Ok(Token::new(TokenData::RightBracket, token_location)),
-            Some('(') => Ok(Token::new(TokenData::LeftParenthesis, token_location)),
-            Some(')') => Ok(Token::new(TokenData::RightParenthesis, token_location)),
+            Char('.') => Ok(Token::new(TokenData::Dot, token_location)),
+            Char(',') => Ok(Token::new(TokenData::Comma, token_location)),
+            Char(';') => Ok(Token::new(TokenData::Semicolon, token_location)),
+            Char(':') => Ok(Token::new(TokenData::Colon, token_location)),
+            Char('=') => Ok(Token::new(TokenData::Equals, token_location)),
+            Char('&') => Ok(Token::new(TokenData::AND, token_location)),
+            Char('|') => Ok(Token::new(TokenData::OR, token_location)),
+            Char('^') => Ok(Token::new(TokenData::XOR, token_location)),
+            Char('~') => Ok(Token::new(TokenData::NOT, token_location)),
+            Char('{') => Ok(Token::new(TokenData::LeftBrace, token_location)),
+            Char('}') => Ok(Token::new(TokenData::RightBrace, token_location)),
+            Char('[') => Ok(Token::new(TokenData::LeftBracket, token_location)),
+            Char(']') => Ok(Token::new(TokenData::RightBracket, token_location)),
+            Char('(') => Ok(Token::new(TokenData::LeftParenthesis, token_location)),
+            Char(')') => Ok(Token::new(TokenData::RightParenthesis, token_location)),
             // Tokens that can't be match'ed
-            Some(x) => {
+            Char(x) => {
                 if x.is_alphabetic() || x == '_' {
                     // Identifier & keywords
 
@@ -170,7 +181,7 @@ impl<R: Read> ILexer for Lexer<R> {
                         c = self.get_char()?;
 
                         match c {
-                            Some(x) => {
+                            Char(x) => {
                                 if x.is_alphanumeric() || x == '_' {
                                     s.push(x);
                                 } else {
@@ -178,7 +189,7 @@ impl<R: Read> ILexer for Lexer<R> {
                                     break;
                                 }
                             },
-                            None => break,
+                            EOF => break,
                         }
                     }
 
@@ -191,32 +202,42 @@ impl<R: Read> ILexer for Lexer<R> {
                 } else if x.is_numeric() {
                     // Number
 
-                    let mut value: u64 = x.to_digit(10).unwrap() as u64;
+                    let value = self.parse_number(&mut c)?.unwrap();
 
-                    loop {
+                    let width = if c == Char('#') {
                         c = self.get_char()?;
 
-                        match c {
-                            Some(x) => {
-                                if x.is_numeric() {
-                                    value *= 10;
-                                    value += x.to_digit(10).unwrap() as u64;
-                                } else {
-                                    self.unget_char();
-                                    break;
-                                }
-                            },
-                            None => break,
-                        }
-                    }
+                        let width = match self.parse_number(&mut c)? {
+                            Some(v) => v,
+                            None => return Err(LexerError::NumberLiteralNoWidth(token_location)),
+                        };
 
-                    Ok(Token::new(TokenData::Number(value), token_location))
+                        if width == 0 {
+                            return Err(LexerError::NumberLiteralWidthZero(token_location));
+                        }
+
+                        if width > 64 {
+                            return Err(LexerError::NumberLiteralWidthTooBig(token_location));
+                        }
+
+                        if value > (1 << width) - 1 {
+                            return Err(LexerError::NumberLiteralValueTooBig(token_location));
+                        }
+
+                        Some(width)
+                    } else {
+                        None
+                    };
+
+                    self.unget_char();
+
+                    Ok(Token::new(TokenData::Number { value, width }, token_location))
                 } else {
                     Err(LexerError::UnexpectedCharacter(x, token_location))
                 }
             },
             // EndOfFile
-            None => Ok(Token::new(TokenData::EndOfFile, token_location)),
+            EOF => Ok(Token::new(TokenData::EndOfFile, token_location)),
         }
     }
 }
@@ -238,24 +259,26 @@ impl<R: Read> Lexer<R> {
     /// This method also keeps track of the current source code line and column number which is
     /// stored in `self.location`.
     /// When the end of the file is reached, this method returns `None`.
-    fn get_char(&mut self) -> Result<Option<char>, LexerError> {
+    fn get_char(&mut self) -> Result<ExtChar, LexerError> {
         let result = match self.next_char {
             Some(c) => {
                 self.next_char = None;
-                Ok(Some(c))
+                Ok(c)
             },
             None => self.reader.read_char(),
         };
 
-        if let Ok(Some(c)) = result {
+        if let Ok(c) = result {
             self.previous_location = self.location;
             self.previous_char = Some(c);
 
-            if c == '\n' {
-                self.location.line += 1;
-                self.location.column = 0;
-            } else {
-                self.location.column += 1;
+            if let Char(c) = c {
+                if c == '\n' {
+                    self.location.line += 1;
+                    self.location.column = 0;
+                } else {
+                    self.location.column += 1;
+                }
             }
         }
 
@@ -279,6 +302,31 @@ impl<R: Read> Lexer<R> {
             },
             None => panic!("unget_char() called but no char to unget"),
         }
+    }
+
+    fn parse_number(&mut self, c: &mut ExtChar) -> Result<Option<u64>, LexerError> {
+        if c.is_eof() || !c.get_char().unwrap().is_numeric() {
+            return Ok(None);
+        }
+
+        let mut value: u64 = 0;
+
+        loop {
+            let digit = c.get_char().unwrap().to_digit(10).unwrap() as u64;
+
+            value *= 10;
+            value += digit;
+
+            *c = self.get_char()?;
+
+            match c {
+                Char(x) if !x.is_numeric() => break,
+                EOF => break,
+                _ => {},
+            }
+        }
+
+        Ok(Some(value))
     }
 }
 
@@ -330,7 +378,7 @@ mod tests {
     fn number_zeroes() {
         let source_text = "00000000000000000000000005";
         let expected_tokens = vec![
-            Token::new(TokenData::Number(5), Location::new(1, 1)),
+            Token::new(TokenData::Number { value: 5, width: None }, Location::new(1, 1)),
             Token::new(TokenData::EndOfFile, Location::new(1, 26)),
         ];
 
@@ -342,12 +390,92 @@ mod tests {
     fn number_big() {
         let source_text = "9223372036854775807";
         let expected_tokens = vec![
-            Token::new(TokenData::Number(9223372036854775807), Location::new(1, 1)),
+            Token::new(TokenData::Number { value: 9223372036854775807, width: None }, Location::new(1, 1)),
             Token::new(TokenData::EndOfFile, Location::new(1, 19)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn number_width() {
+        let source_text = "42#8";
+        let expected_tokens = vec![
+            Token::new(TokenData::Number { value: 42, width: Some(8) }, Location::new(1, 1)),
+            Token::new(TokenData::EndOfFile, Location::new(1, 4)),
+        ];
+
+        let result = expect_tokens(source_text, &expected_tokens);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn number_no_width() {
+        let source_text = "42#";
+
+        let source = Cursor::new(source_text);
+
+        let mut lexer = Lexer::new(source);
+
+        let result = lexer.get_token();
+
+        assert_matches!(result, Err(LexerError::NumberLiteralNoWidth(_)));
+
+        if let Err(LexerError::NumberLiteralNoWidth(l)) = result {
+            assert_eq!(Location::new(1, 1), l);
+        }
+    }
+
+    #[test]
+    fn number_zero_width() {
+        let source_text = "42#0";
+
+        let source = Cursor::new(source_text);
+
+        let mut lexer = Lexer::new(source);
+
+        let result = lexer.get_token();
+
+        assert_matches!(result, Err(LexerError::NumberLiteralWidthZero(_)));
+
+        if let Err(LexerError::NumberLiteralWidthZero(l)) = result {
+            assert_eq!(Location::new(1, 1), l);
+        }
+    }
+
+    #[test]
+    fn number_width_too_big() {
+        let source_text = "42#70";
+
+        let source = Cursor::new(source_text);
+
+        let mut lexer = Lexer::new(source);
+
+        let result = lexer.get_token();
+
+        assert_matches!(result, Err(LexerError::NumberLiteralWidthTooBig(_)));
+
+        if let Err(LexerError::NumberLiteralWidthTooBig(l)) = result {
+            assert_eq!(Location::new(1, 1), l);
+        }
+    }
+
+    #[test]
+    fn number_value_too_big() {
+        let source_text = "256#8";
+
+        let source = Cursor::new(source_text);
+
+        let mut lexer = Lexer::new(source);
+
+        let result = lexer.get_token();
+
+        assert_matches!(result, Err(LexerError::NumberLiteralValueTooBig(_)));
+
+        if let Err(LexerError::NumberLiteralValueTooBig(l)) = result {
+            assert_eq!(Location::new(1, 1), l);
+        }
     }
 
     #[test]
@@ -414,7 +542,7 @@ block
 
         let expected_tokens = vec![
             Token::new(TokenData::Identifier("hello".to_string()), Location::new(1, 1)),
-            Token::new(TokenData::Number(42), Location::new(2, 1)),
+            Token::new(TokenData::Number { value: 42, width: None }, Location::new(2, 1)),
             Token::new(TokenData::Dot, Location::new(3, 1)),
             Token::new(TokenData::Comma, Location::new(4, 1)),
             Token::new(TokenData::Semicolon, Location::new(5, 1)),
@@ -458,19 +586,19 @@ block and {
             Token::new(TokenData::InKeyword, Location::new(2, 5)),
             Token::new(TokenData::Identifier("a".to_string()), Location::new(2, 8)),
             Token::new(TokenData::LeftBracket, Location::new(2, 9)),
-            Token::new(TokenData::Number(8), Location::new(2, 10)),
+            Token::new(TokenData::Number { value: 8, width: None }, Location::new(2, 10)),
             Token::new(TokenData::RightBracket, Location::new(2, 11)),
             Token::new(TokenData::Semicolon, Location::new(2, 12)),
             Token::new(TokenData::InKeyword, Location::new(3, 5)),
             Token::new(TokenData::Identifier("b".to_string()), Location::new(3, 8)),
             Token::new(TokenData::LeftBracket, Location::new(3, 9)),
-            Token::new(TokenData::Number(8), Location::new(3, 10)),
+            Token::new(TokenData::Number { value: 8, width: None }, Location::new(3, 10)),
             Token::new(TokenData::RightBracket, Location::new(3, 11)),
             Token::new(TokenData::Semicolon, Location::new(3, 12)),
             Token::new(TokenData::OutKeyword, Location::new(4, 5)),
             Token::new(TokenData::Identifier("q".to_string()), Location::new(4, 9)),
             Token::new(TokenData::LeftBracket, Location::new(4, 10)),
-            Token::new(TokenData::Number(8), Location::new(4, 11)),
+            Token::new(TokenData::Number { value: 8, width: None }, Location::new(4, 11)),
             Token::new(TokenData::RightBracket, Location::new(4, 12)),
             Token::new(TokenData::Semicolon, Location::new(4, 13)),
             Token::new(TokenData::OutKeyword, Location::new(6, 5)),
