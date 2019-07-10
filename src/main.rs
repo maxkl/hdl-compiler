@@ -2,6 +2,7 @@
 mod ext_char;
 mod char_reader;
 mod lexer;
+mod ast;
 mod parser;
 
 use std::{io, env};
@@ -56,7 +57,7 @@ fn run(args: Vec<String>) -> Result<(), Error> {
 
     let lexer = Lexer::new(source);
 
-    let mut parser = Parser::new(lexer);
+    let mut parser = Parser::new(lexer).unwrap();
 
     parser.parse()?;
 
