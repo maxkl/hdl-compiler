@@ -1,5 +1,5 @@
 [package]
-name = "hdl-compiler"
+name = "hdl_compiler"
 version = "0.1.0"
 authors = ["maxkl <max@maxkl.de>"]
 edition = "2018"
