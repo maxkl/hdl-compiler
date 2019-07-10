@@ -73,6 +73,40 @@ impl<L: ILexer> Parser<L> {
         }
     }
 
+    /// Parser grammar (EBNF):
+    ///
+    /// ```ebnf
+    /// root                 = blocks ;
+    /// blocks               = { block } ;
+    /// block                = 'block', identifier, '{', declarations, behaviour_statements, '}' ;
+    /// declarations         = { declaration } ;
+    /// declaration          = type, identifier_list, ';' ;
+    /// identifier_list      = identifier, { ',', identifier } ;
+    /// type                 = type_specifier, [ '[', number, ']' ] ;
+    /// type_specifier       = 'in' | 'out' | 'block', identifier ;
+    /// behaviour_statements = { behaviour_statement } ;
+    /// behaviour_statement  = behaviour_identifier, '=', expr, ';' ;
+    /// behaviour_identifier = identifier, [ '.', identifier ], [ subscript ] ;
+    /// subscript            = '[', number, [ ':', number ], ']' ;
+    ///
+    ///
+    /// Operators (highest precedence level first):
+    ///
+    /// Unary:
+    ///   Bitwise NOT: ~
+    /// Bitwise AND: &
+    /// Bitwise XOR: ^
+    /// Bitwise OR: |
+    ///
+    ///
+    /// expr         = bit_or_expr ;
+    /// bit_or_expr  = bit_xor_expr, { '|', bit_xor_expr } ;
+    /// bit_xor_expr = bit_and_expr, { '^', bit_and_expr } ;
+    /// bit_and_expr = unary_expr, { '&', unary_expr } ;
+    /// unary_expr   = '~', unary_expr | primary_expr ;
+    /// primary_expr = '(', expr, ')' | behaviour_identifier | number ;
+    /// ```
+
     pub fn parse(&mut self) -> Result<(), Error> {
         let blocks = self.parse_blocks()?;
 
