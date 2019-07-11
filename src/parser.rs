@@ -9,6 +9,9 @@ pub enum ParserError {
     #[fail(display = "{}: expected {} but got {}", _0, _1, _2)]
     UnexpectedToken(Location, TokenKind, TokenKind),
 
+    #[fail(display = "{}: {}", _0, _1)]
+    Custom(Location, String),
+
     #[fail(display = "{}", _0)]
     Lexer(#[cause] LexerError),
 }
@@ -141,14 +144,106 @@ impl<L: ILexer> Parser<L> {
 
         self.match_token(TokenKind::LeftBrace)?;
 
-        // TODO: parse declarations and behaviour statements
+        let declarations = self.parse_declarations()?;
+
+        let behaviour_statements = self.parse_behaviour_statements()?;
 
         self.match_token(TokenKind::RightBrace)?;
 
         Ok(Box::new(BlockNode {
             name,
-            declarations: vec![],
-            behaviour_statements: vec![]
+            declarations,
+            behaviour_statements,
         }))
+    }
+
+    fn parse_declarations(&mut self) -> Result<Vec<Box<DeclarationNode>>, ParserError> {
+        let mut declarations = Vec::<Box<DeclarationNode>>::new();
+
+        while self.lookahead.kind == TokenKind::InKeyword
+            || self.lookahead.kind == TokenKind::OutKeyword
+            || self.lookahead.kind == TokenKind::BlockKeyword {
+
+            let declaration = self.parse_declaration()?;
+
+            declarations.push(declaration);
+        }
+
+        Ok(declarations)
+    }
+
+    fn parse_declaration(&mut self) -> Result<Box<DeclarationNode>, ParserError> {
+        let typ = self.parse_type()?;
+
+        let names = self.parse_identifier_list()?;
+
+        self.match_token(TokenKind::Semicolon)?;
+
+        Ok(Box::new(DeclarationNode {
+            typ,
+            names
+        }))
+    }
+
+    fn parse_type(&mut self) -> Result<Box<TypeNode>, ParserError> {
+        let specifier = self.parse_type_specifier()?;
+
+        let width = if self.lookahead.kind == TokenKind::LeftBracket {
+            self.match_token(TokenKind::LeftBracket)?;
+
+            let width = self.parse_number()?;
+
+            self.match_token(TokenKind::RightBracket)?;
+
+            Some(width)
+        } else {
+            None
+        };
+
+        Ok(Box::new(TypeNode {
+            specifier,
+            width
+        }))
+    }
+
+    fn parse_type_specifier(&mut self) -> Result<Box<TypeSpecifierNode>, ParserError> {
+        match self.lookahead.kind {
+            TokenKind::InKeyword => {
+                self.match_token(TokenKind::InKeyword)?;
+
+                Ok(Box::new(TypeSpecifierNode::In))
+            },
+            TokenKind::OutKeyword => {
+                self.match_token(TokenKind::OutKeyword)?;
+
+                Ok(Box::new(TypeSpecifierNode::Out))
+            },
+            TokenKind::BlockKeyword => {
+                self.match_token(TokenKind::BlockKeyword)?;
+
+                let name = self.parse_identifier()?;
+
+                Ok(Box::new(TypeSpecifierNode::Block(name)))
+            },
+            kind => Err(ParserError::Custom(self.lookahead.location, format!("expected type but got {}", kind)))
+        }
+    }
+
+    fn parse_identifier_list(&mut self) -> Result<Vec<Box<IdentifierNode>>, ParserError> {
+        let mut identifiers = Vec::<Box<IdentifierNode>>::new();
+
+        identifiers.push(self.parse_identifier()?);
+
+        while self.lookahead.kind == TokenKind::Comma {
+            self.match_token(TokenKind::Comma)?;
+
+            identifiers.push(self.parse_identifier()?);
+        }
+
+        Ok(identifiers)
+    }
+
+    fn parse_behaviour_statements(&mut self) -> Result<Vec<Box<BehaviourStatementNode>>, ParserError> {
+        Ok(vec![])
     }
 }

@@ -24,7 +24,7 @@ pub struct BlockNode {
 
 #[derive(Debug)]
 pub struct DeclarationNode {
-    pub type_: Box<TypeNode>,
+    pub typ: Box<TypeNode>,
     pub names: Vec<Box<IdentifierNode>>
 }
 
