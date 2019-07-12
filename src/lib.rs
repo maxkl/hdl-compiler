@@ -57,7 +57,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     let lexer = Lexer::new(source);
 
-    let mut parser = Parser::new(lexer).unwrap();
+    let mut parser = Parser::new(lexer)?;
 
     parser.parse()?;
 
