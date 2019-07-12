@@ -110,19 +110,15 @@ impl<L: ILexer> Parser<L> {
     /// primary_expr = '(', expr, ')' | behaviour_identifier | number ;
     /// ```
 
-    pub fn parse(&mut self) -> Result<(), Error> {
+    pub fn parse(&mut self) -> Result<Box<RootNode>, ParserError> {
         let blocks = self.parse_blocks()?;
 
         // Make sure there are no tokens left over
         self.match_token(TokenKind::EndOfFile)?;
 
-        let root = RootNode {
+        Ok(Box::new(RootNode {
             blocks
-        };
-
-        println!("{:#?}", root);
-
-        Ok(())
+        }))
     }
 
     fn parse_blocks(&mut self) -> Result<Vec<Box<BlockNode>>, ParserError> {

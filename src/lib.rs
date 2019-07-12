@@ -4,6 +4,7 @@ mod char_reader;
 mod lexer;
 mod ast;
 mod parser;
+mod semantic_analyzer;
 
 use std::io;
 use std::fs::File;
@@ -59,7 +60,9 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     let mut parser = Parser::new(lexer)?;
 
-    parser.parse()?;
+    let root = parser.parse()?;
+
+    println!("{:#?}", root);
 
     Ok(())
 }
