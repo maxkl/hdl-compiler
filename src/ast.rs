@@ -76,6 +76,6 @@ pub enum UnaryOp {
 pub enum ExpressionNode {
     Binary(BinaryOp, Box<ExpressionNode>, Box<ExpressionNode>),
     Unary(UnaryOp, Box<ExpressionNode>),
-    Variable(Box<IdentifierNode>),
+    Variable(Box<BehaviourIdentifierNode>),
     Const(Box<NumberNode>),
 }

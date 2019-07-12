@@ -244,6 +244,158 @@ impl<L: ILexer> Parser<L> {
     }
 
     fn parse_behaviour_statements(&mut self) -> Result<Vec<Box<BehaviourStatementNode>>, ParserError> {
-        Ok(vec![])
+        let mut behaviour_statements = Vec::<Box<BehaviourStatementNode>>::new();
+
+        while self.lookahead.kind == TokenKind::Identifier {
+            let behaviour_statement = self.parse_behaviour_statement()?;
+
+            behaviour_statements.push(behaviour_statement);
+        }
+
+        Ok(behaviour_statements)
+    }
+
+    fn parse_behaviour_statement(&mut self) -> Result<Box<BehaviourStatementNode>, ParserError> {
+        let target = self.parse_behaviour_identifier()?;
+
+        self.match_token(TokenKind::Equals)?;
+
+        let source = self.parse_expression()?;
+
+        self.match_token(TokenKind::Semicolon)?;
+
+        Ok(Box::new(BehaviourStatementNode {
+            target,
+            source
+        }))
+    }
+
+    fn parse_behaviour_identifier(&mut self) -> Result<Box<BehaviourIdentifierNode>, ParserError> {
+        let name = self.parse_identifier()?;
+
+        let property = if self.lookahead.kind == TokenKind::Dot {
+            self.match_token(TokenKind::Dot)?;
+
+            Some(self.parse_identifier()?)
+        } else {
+            None
+        };
+
+        let subscript = if self.lookahead.kind == TokenKind::LeftBracket {
+            Some(self.parse_subscript()?)
+        } else {
+            None
+        };
+
+        Ok(Box::new(BehaviourIdentifierNode {
+            name,
+            property,
+            subscript
+        }))
+    }
+
+    fn parse_subscript(&mut self) -> Result<Box<SubscriptNode>, ParserError> {
+        self.match_token(TokenKind::LeftBracket)?;
+
+        let start = self.parse_number()?;
+
+        let end = if self.lookahead.kind == TokenKind::Colon {
+            self.match_token(TokenKind::Colon)?;
+
+            Some(self.parse_number()?)
+        } else {
+            None
+        };
+
+        self.match_token(TokenKind::RightBracket)?;
+
+        Ok(Box::new(SubscriptNode {
+            start,
+            end
+        }))
+    }
+
+    fn parse_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+        self.parse_bitwise_or_expression()
+    }
+
+    fn parse_bitwise_or_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+        let mut left = self.parse_bitwise_xor_expression()?;
+
+        while self.lookahead.kind == TokenKind::OR {
+            self.match_token(TokenKind::OR)?;
+
+            let right = self.parse_bitwise_xor_expression()?;
+
+            left = Box::new(ExpressionNode::Binary(BinaryOp::OR, left, right))
+        }
+
+        Ok(left)
+    }
+
+    fn parse_bitwise_xor_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+        let mut left = self.parse_bitwise_and_expression()?;
+
+        while self.lookahead.kind == TokenKind::XOR {
+            self.match_token(TokenKind::XOR)?;
+
+            let right = self.parse_bitwise_and_expression()?;
+
+            left = Box::new(ExpressionNode::Binary(BinaryOp::XOR, left, right))
+        }
+
+        Ok(left)
+    }
+
+    fn parse_bitwise_and_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+        let mut left = self.parse_unary_expression()?;
+
+        while self.lookahead.kind == TokenKind::AND {
+            self.match_token(TokenKind::AND)?;
+
+            let right = self.parse_unary_expression()?;
+
+            left = Box::new(ExpressionNode::Binary(BinaryOp::AND, left, right))
+        }
+
+        Ok(left)
+    }
+
+    fn parse_unary_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+        match self.lookahead.kind {
+            TokenKind::NOT => {
+                self.match_token(TokenKind::NOT)?;
+
+                let operand = self.parse_unary_expression()?;
+
+                Ok(Box::new(ExpressionNode::Unary(UnaryOp::NOT, operand)))
+            },
+            _ => self.parse_primary_expression()
+        }
+    }
+
+    fn parse_primary_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+        match self.lookahead.kind {
+            TokenKind::LeftParenthesis => {
+                self.match_token(TokenKind::LeftParenthesis)?;
+
+                let subexpression = self.parse_expression()?;
+
+                self.match_token(TokenKind::RightParenthesis)?;
+
+                Ok(subexpression)
+            },
+            TokenKind::Identifier => {
+                let identifier = self.parse_behaviour_identifier()?;
+
+                Ok(Box::new(ExpressionNode::Variable(identifier)))
+            },
+            TokenKind::Number => {
+                let number = self.parse_number()?;
+
+                Ok(Box::new(ExpressionNode::Const(number)))
+            },
+            kind => Err(ParserError::Custom(self.lookahead.location, format!("expected expression but got {}", kind)))
+        }
     }
 }
