@@ -177,10 +177,26 @@ impl<R: Read> ILexer for Lexer<R> {
         loop {
             c = self.get_char()?;
 
+            // Skip comments starting with '//'
+            if c == Char('/') {
+                c = self.get_char()?;
+
+                // Second '/'
+                if c == Char('/') {
+                    // Comments end with a line break
+                    while c != Char('\n') {
+                        c = self.get_char()?;
+                    }
+                } else {
+                    self.unget_char();
+                }
+            }
+
             match c {
                 Char(x) if !x.is_whitespace() => break,
                 EOF => break,
-                _ => {}
+                // c is whitespace, don't break loop
+                Char(_) => {},
             }
         }
 
