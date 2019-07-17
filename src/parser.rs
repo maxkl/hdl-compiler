@@ -1,5 +1,8 @@
 
-use failure::{Fail, Error};
+use std::rc::Rc;
+use std::cell::RefCell;
+
+use failure::Fail;
 
 use crate::lexer::{ILexer, TokenKind, LexerError, Token, Location, TokenData};
 use crate::ast::*;
@@ -117,12 +120,13 @@ impl<L: ILexer> Parser<L> {
         self.match_token(TokenKind::EndOfFile)?;
 
         Ok(Box::new(RootNode {
-            blocks
+            blocks,
+            symbol_table: None
         }))
     }
 
-    fn parse_blocks(&mut self) -> Result<Vec<Box<BlockNode>>, ParserError> {
-        let mut blocks = Vec::<Box<BlockNode>>::new();
+    fn parse_blocks<'a>(&mut self) -> Result<Vec<Rc<RefCell<BlockNode>>>, ParserError> {
+        let mut blocks = Vec::<Rc<RefCell<BlockNode>>>::new();
 
         while self.lookahead.kind == TokenKind::BlockKeyword {
             let block = self.parse_block()?;
@@ -133,7 +137,7 @@ impl<L: ILexer> Parser<L> {
         Ok(blocks)
     }
 
-    fn parse_block(&mut self) -> Result<Box<BlockNode>, ParserError> {
+    fn parse_block<'a>(&mut self) -> Result<Rc<RefCell<BlockNode>>, ParserError> {
         self.match_token(TokenKind::BlockKeyword)?;
 
         let name = self.parse_identifier()?;
@@ -146,11 +150,12 @@ impl<L: ILexer> Parser<L> {
 
         self.match_token(TokenKind::RightBrace)?;
 
-        Ok(Box::new(BlockNode {
+        Ok(Rc::new(RefCell::new(BlockNode {
             name,
             declarations,
             behaviour_statements,
-        }))
+            symbol_table: None
+        })))
     }
 
     fn parse_declarations(&mut self) -> Result<Vec<Box<DeclarationNode>>, ParserError> {

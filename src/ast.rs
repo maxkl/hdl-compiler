@@ -1,4 +1,9 @@
 
+use std::rc::Rc;
+use std::cell::RefCell;
+
+use crate::symbol_table::SymbolTable;
+
 #[derive(Debug)]
 pub struct IdentifierNode {
     pub value: String
@@ -12,14 +17,18 @@ pub struct NumberNode {
 
 #[derive(Debug)]
 pub struct RootNode {
-    pub blocks: Vec<Box<BlockNode>>
+    pub blocks: Vec<Rc<RefCell<BlockNode>>>,
+
+    pub symbol_table: Option<Rc<RefCell<SymbolTable>>>
 }
 
 #[derive(Debug)]
 pub struct BlockNode {
     pub name: Box<IdentifierNode>,
     pub declarations: Vec<Box<DeclarationNode>>,
-    pub behaviour_statements: Vec<Box<BehaviourStatementNode>>
+    pub behaviour_statements: Vec<Box<BehaviourStatementNode>>,
+
+    pub symbol_table: Option<Rc<RefCell<SymbolTable>>>
 }
 
 #[derive(Debug)]

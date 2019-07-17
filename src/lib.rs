@@ -3,6 +3,8 @@ mod ext_char;
 mod char_reader;
 mod lexer;
 mod ast;
+mod symbol;
+mod symbol_table;
 mod parser;
 mod semantic_analyzer;
 
@@ -14,6 +16,7 @@ use failure::{Error, format_err};
 
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::semantic_analyzer::SemanticAnalyzer;
 
 /// Wrapper (around stdin or a file) that implements `Read`
 struct Input<'a> {
@@ -60,7 +63,9 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     let mut parser = Parser::new(lexer)?;
 
-    let root = parser.parse()?;
+    let mut root = parser.parse()?;
+
+    SemanticAnalyzer::analyze(&mut root)?;
 
     println!("{:#?}", root);
 
