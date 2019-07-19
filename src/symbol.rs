@@ -4,14 +4,14 @@ use std::cell::RefCell;
 
 use crate::ast::BlockNode;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SymbolTypeSpecifier {
     In,
     Out,
     Block(Weak<RefCell<BlockNode>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolType {
     pub specifier: SymbolTypeSpecifier,
     pub width: u64
