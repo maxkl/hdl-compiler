@@ -87,8 +87,8 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_declaration(declaration: &mut DeclarationNode, symbol_table: &mut SymbolTable) -> Result<(), SemanticAnalyzerError> {
-        let symbol_type = Self::analyze_type(declaration.typ.as_mut(), symbol_table)?;
+    fn analyze_declaration(declaration: &DeclarationNode, symbol_table: &mut SymbolTable) -> Result<(), SemanticAnalyzerError> {
+        let symbol_type = Self::analyze_type(declaration.typ.as_ref(), symbol_table)?;
 
         for name in &declaration.names {
             Self::analyze_declaration_identifier(name, symbol_table, &symbol_type)?;
@@ -97,7 +97,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_type(typ: &mut TypeNode, symbol_table: &mut SymbolTable) -> Result<SymbolType, SemanticAnalyzerError> {
+    fn analyze_type(typ: &TypeNode, symbol_table: &SymbolTable) -> Result<SymbolType, SemanticAnalyzerError> {
         let type_specifier = match typ.specifier.as_ref() {
             TypeSpecifierNode::In => SymbolTypeSpecifier::In,
             TypeSpecifierNode::Out => SymbolTypeSpecifier::Out,
