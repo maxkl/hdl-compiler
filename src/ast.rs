@@ -75,14 +75,14 @@ pub struct SubscriptNode {
     pub lower_index: Option<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum BinaryOp {
     AND,
     OR,
     XOR,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum UnaryOp {
     NOT,
 }

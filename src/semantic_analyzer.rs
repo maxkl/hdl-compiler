@@ -21,13 +21,13 @@ pub enum SemanticAnalyzerError {
     #[fail(display = "signal(s) declared with invalid width of 0")]
     ZeroWidth(),
 
-    #[fail(display = "output signal used as target operand of assignment")]
+    #[fail(display = "output signal used as target operand")]
     OutputAsTargetSignal(),
 
-    #[fail(display = "input signal used as source operand of assignment")]
+    #[fail(display = "input signal used as source operand")]
     InputAsSourceSignal(),
 
-    #[fail(display = "types of operands to operator \"{}\" are incompatible", _0)]
+    #[fail(display = "types of operands to {} operator are incompatible", _0)]
     IncompatibleOperandTypes(String),
 
     #[fail(display = "block used as signal")]
@@ -44,6 +44,9 @@ pub enum SemanticAnalyzerError {
 
     #[fail(display = "subscript indices swapped: upper <= lower ({} <= {})", _0, _1)]
     SubscriptIndicesSwapped(u64, u64),
+
+    #[fail(display = "number literal without width used in expression")]
+    NoWidth(),
 
     #[fail(display = "{}", _0)]
     SymbolTable(#[cause] SymbolTableError),
@@ -178,14 +181,14 @@ impl SemanticAnalyzer {
             return Err(SemanticAnalyzerError::OutputAsTargetSignal());
         }
 
-        let source_type = Self::analyze_expression(behaviour_statement.source.as_ref(), symbol_table)?;
+        let source_type = Self::analyze_expression(behaviour_statement.source.as_mut(), symbol_table)?;
 
         if source_type.access_type != AccessType::Read {
             return Err(SemanticAnalyzerError::InputAsSourceSignal());
         }
 
         if target_type.width != source_type.width {
-            return Err(SemanticAnalyzerError::IncompatibleOperandTypes("=".to_string()));
+            return Err(SemanticAnalyzerError::IncompatibleOperandTypes("assignment".to_string()));
         }
 
         behaviour_statement.expression_type = Some(source_type);
@@ -279,10 +282,64 @@ impl SemanticAnalyzer {
         Ok((upper_index, lower_index))
     }
 
-    fn analyze_expression(expression: &ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
-        Ok(ExpressionType {
-            access_type: AccessType::Read,
-            width: 1,
-        })
+    fn analyze_expression(expression: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
+        let expression_type = match expression {
+            ExpressionNode::Binary(op, left, right) =>
+                Self::analyze_binary_expression(*op, left, right, symbol_table)?,
+            ExpressionNode::Unary(op, operand) =>
+                Self::analyze_unary_expression(*op, operand, symbol_table)?,
+            ExpressionNode::Variable(behaviour_identifier) => {
+                let expression_type = Self::analyze_behaviour_identifier(behaviour_identifier.as_mut(), symbol_table)?;
+
+                if expression_type.access_type != AccessType::Read {
+                    return Err(SemanticAnalyzerError::InputAsSourceSignal());
+                }
+
+                expression_type
+            },
+            ExpressionNode::Const(number) => {
+                let width = number.width
+                    .ok_or_else(|| SemanticAnalyzerError::NoWidth())?;
+
+                ExpressionType {
+                    access_type: AccessType::Read,
+                    width
+                }
+            },
+        };
+
+        // TODO: store expression type on expression node -> requires making ExpressionNode a struct
+
+        Ok(expression_type)
+    }
+
+    fn analyze_unary_expression(op: UnaryOp, operand: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
+        let expression_type = Self::analyze_expression(operand, symbol_table)?;
+
+        if expression_type.access_type != AccessType::Read {
+            return Err(SemanticAnalyzerError::InputAsSourceSignal());
+        }
+
+        Ok(expression_type)
+    }
+
+    fn analyze_binary_expression(op: BinaryOp, left: &mut ExpressionNode, right: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
+        let expression_type_left = Self::analyze_expression(left, symbol_table)?;
+
+        if expression_type_left.access_type != AccessType::Read {
+            return Err(SemanticAnalyzerError::InputAsSourceSignal());
+        }
+
+        let expression_type_right = Self::analyze_expression(right, symbol_table)?;
+
+        if expression_type_right.access_type != AccessType::Read {
+            return Err(SemanticAnalyzerError::InputAsSourceSignal());
+        }
+
+        if expression_type_left != expression_type_right {
+            return Err(SemanticAnalyzerError::IncompatibleOperandTypes("binary".to_string()));
+        }
+
+        Ok(expression_type_left)
     }
 }
