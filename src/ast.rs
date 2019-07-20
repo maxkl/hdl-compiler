@@ -68,8 +68,11 @@ pub struct BehaviourIdentifierNode {
 
 #[derive(Debug)]
 pub struct SubscriptNode {
-    pub start: Box<NumberNode>,
-    pub end: Option<Box<NumberNode>>
+    pub upper: Option<Box<NumberNode>>,
+    pub lower: Box<NumberNode>,
+
+    pub upper_index: Option<u64>,
+    pub lower_index: Option<u64>,
 }
 
 #[derive(Debug)]

@@ -42,6 +42,9 @@ pub enum SemanticAnalyzerError {
     #[fail(display = "upper subscript index exceeds type width: {} > {}", _0, _1)]
     SubscriptExceedsWidth(u64, u64),
 
+    #[fail(display = "subscript indices swapped: upper <= lower ({} <= {})", _0, _1)]
+    SubscriptIndicesSwapped(u64, u64),
+
     #[fail(display = "{}", _0)]
     SymbolTable(#[cause] SymbolTableError),
 }
@@ -169,7 +172,7 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_behaviour_statement(behaviour_statement: &mut BehaviourStatementNode, symbol_table: &SymbolTable) -> Result<(), SemanticAnalyzerError> {
-        let target_type = Self::analyze_behaviour_identifier(behaviour_statement.target.as_ref(), symbol_table)?;
+        let target_type = Self::analyze_behaviour_identifier(behaviour_statement.target.as_mut(), symbol_table)?;
 
         if target_type.access_type != AccessType::Write {
             return Err(SemanticAnalyzerError::OutputAsTargetSignal());
@@ -190,7 +193,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_behaviour_identifier(behaviour_identifier: &BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
+    fn analyze_behaviour_identifier(behaviour_identifier: &mut BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
         let symbol_name = &behaviour_identifier.name.value;
 
         let symbol = symbol_table.find_recursive(symbol_name)
@@ -239,7 +242,7 @@ impl SemanticAnalyzer {
             }
         };
 
-        let width = if let Some(subscript) = &behaviour_identifier.subscript {
+        let width = if let Some(subscript) = &mut behaviour_identifier.subscript {
             let (upper_index, lower_index) = Self::analyze_subscript(subscript)?;
 
             if upper_index > symbol_type.width {
@@ -257,8 +260,23 @@ impl SemanticAnalyzer {
         })
     }
 
-    fn analyze_subscript(subscript: &SubscriptNode) -> Result<(u64, u64), SemanticAnalyzerError> {
-        Ok((0, 0))
+    fn analyze_subscript(subscript: &mut SubscriptNode) -> Result<(u64, u64), SemanticAnalyzerError> {
+        let lower_index = subscript.lower.value;
+
+        let upper_index = if let Some(upper) = &subscript.upper {
+            upper.value
+        } else {
+            lower_index + 1
+        };
+
+        if lower_index >= upper_index {
+            return Err(SemanticAnalyzerError::SubscriptIndicesSwapped(upper_index, lower_index));
+        }
+
+        subscript.upper_index = Some(upper_index);
+        subscript.lower_index = Some(lower_index);
+
+        Ok((upper_index, lower_index))
     }
 
     fn analyze_expression(expression: &ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {

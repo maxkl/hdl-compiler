@@ -299,21 +299,28 @@ impl<L: ILexer> Parser<L> {
     fn parse_subscript(&mut self) -> Result<Box<SubscriptNode>, ParserError> {
         self.match_token(TokenKind::LeftBracket)?;
 
-        let start = self.parse_number()?;
+        let first = self.parse_number()?;
 
-        let end = if self.lookahead.kind == TokenKind::Colon {
+        let upper;
+        let lower;
+
+        if self.lookahead.kind == TokenKind::Colon {
             self.match_token(TokenKind::Colon)?;
 
-            Some(self.parse_number()?)
+            lower = self.parse_number()?;
+            upper = Some(first);
         } else {
-            None
-        };
+            lower = first;
+            upper = None;
+        }
 
         self.match_token(TokenKind::RightBracket)?;
 
         Ok(Box::new(SubscriptNode {
-            start,
-            end
+            upper,
+            lower,
+            upper_index: None,
+            lower_index: None,
         }))
     }
 
