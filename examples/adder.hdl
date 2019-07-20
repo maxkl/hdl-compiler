@@ -37,15 +37,15 @@ block adder_2x4bit {
     out carry_out;
     block adder_2x2bit adder_low, adder_high;
 
-    adder_low.a = a[1:0];
-    adder_low.b = b[1:0];
+    adder_low.a = a[2:0];
+    adder_low.b = b[2:0];
     adder_low.carry_in = carry_in;
-    sum[1:0] = adder_low.sum;
+    sum[2:0] = adder_low.sum;
 
-    adder_high.a = a[3:2];
-    adder_high.b = b[3:2];
+    adder_high.a = a[4:2];
+    adder_high.b = b[4:2];
     adder_high.carry_in = adder_low.carry_out;
-    sum[3:2] = adder_high.sum;
+    sum[4:2] = adder_high.sum;
 
     carry_out = adder_high.carry_out;
 }
@@ -58,15 +58,15 @@ block adder_2x8bit {
     out carry_out;
     block adder_2x4bit adder_low, adder_high;
 
-    adder_low.a = a[3:0];
-    adder_low.b = b[3:0];
+    adder_low.a = a[4:0];
+    adder_low.b = b[4:0];
     adder_low.carry_in = carry_in;
-    sum[3:0] = adder_low.sum;
+    sum[4:0] = adder_low.sum;
 
-    adder_high.a = a[7:4];
-    adder_high.b = b[7:4];
+    adder_high.a = a[8:4];
+    adder_high.b = b[8:4];
     adder_high.carry_in = adder_low.carry_out;
-    sum[7:4] = adder_high.sum;
+    sum[8:4] = adder_high.sum;
 
     carry_out = adder_high.carry_out;
 }
