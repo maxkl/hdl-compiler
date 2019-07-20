@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use crate::symbol_table::SymbolTable;
+use crate::expression_type::ExpressionType;
 
 #[derive(Debug)]
 pub struct IdentifierNode {
@@ -53,7 +54,9 @@ pub enum TypeSpecifierNode {
 #[derive(Debug)]
 pub struct BehaviourStatementNode {
     pub target: Box<BehaviourIdentifierNode>,
-    pub source: Box<ExpressionNode>
+    pub source: Box<ExpressionNode>,
+
+    pub expression_type: Option<ExpressionType>,
 }
 
 #[derive(Debug)]

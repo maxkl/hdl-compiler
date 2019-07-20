@@ -6,6 +6,7 @@ mod ast;
 mod symbol;
 mod symbol_table;
 mod parser;
+mod expression_type;
 mod semantic_analyzer;
 
 use std::io;

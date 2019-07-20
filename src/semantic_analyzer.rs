@@ -8,11 +8,12 @@ use failure::Fail;
 use crate::ast::*;
 use crate::symbol_table::{SymbolTable, SymbolTableError};
 use crate::symbol::{SymbolType, SymbolTypeSpecifier, Symbol};
+use crate::expression_type::{ExpressionType, AccessType};
 
 #[derive(Debug, Fail)]
 pub enum SemanticAnalyzerError {
-    #[fail(display = "reference to undefined symbol `{}`", _0)]
-    UndefinedSymbol(String),
+    #[fail(display = "use of undeclared identifier `{}`", _0)]
+    UndeclaredIdentifier(String),
 
     #[fail(display = "symbol `{}` has invalid type: type `{}` required", _0, _1)]
     InvalidType(String, String),
@@ -20,8 +21,26 @@ pub enum SemanticAnalyzerError {
     #[fail(display = "signal(s) declared with invalid width of 0")]
     ZeroWidth(),
 
-    #[fail(display = "{}", _0)]
-    Custom(String),
+    #[fail(display = "output signal used as target operand of assignment")]
+    OutputAsTargetSignal(),
+
+    #[fail(display = "input signal used as source operand of assignment")]
+    InputAsSourceSignal(),
+
+    #[fail(display = "types of operands to operator \"{}\" are incompatible", _0)]
+    IncompatibleOperandTypes(String),
+
+    #[fail(display = "block used as signal")]
+    BlockAsSignal(),
+
+    #[fail(display = "property access on signal")]
+    PropertyAccessOnSignal(),
+
+    #[fail(display = "property `{}` of block `{}` is not publicly accessible", _1, _0)]
+    PrivateProperty(String, String),
+
+    #[fail(display = "upper subscript index exceeds type width: {} > {}", _0, _1)]
+    SubscriptExceedsWidth(u64, u64),
 
     #[fail(display = "{}", _0)]
     SymbolTable(#[cause] SymbolTableError),
@@ -70,7 +89,9 @@ impl SemanticAnalyzer {
                     Self::analyze_declaration(declaration, &mut symbol_table_ref)?;
                 }
 
-//                Self::analyze_behaviour_statements()?;
+                for behaviour_statement in &mut block_ref.behaviour_statements {
+                    Self::analyze_behaviour_statement(behaviour_statement, &mut symbol_table_ref)?;
+                }
             }
 
             block_ref.symbol_table = Some(symbol_table);
@@ -104,12 +125,8 @@ impl SemanticAnalyzer {
             TypeSpecifierNode::Block(name) => {
                 let name = &name.value;
 
-                let block_symbol = symbol_table.find_type_recursive(name);
-
-                let block_symbol_type = match &block_symbol {
-                    Some(block_symbol_type) => block_symbol_type,
-                    None => return Err(SemanticAnalyzerError::UndefinedSymbol(name.to_string())),
-                };
+                let block_symbol_type = symbol_table.find_type_recursive(name)
+                    .ok_or_else(|| SemanticAnalyzerError::UndeclaredIdentifier(name.to_string()))?;
 
                 let block = match &block_symbol_type.specifier {
                     SymbolTypeSpecifier::Block(block) => block,
@@ -149,5 +166,105 @@ impl SemanticAnalyzer {
         symbol_table.add(symbol)?;
 
         Ok(())
+    }
+
+    fn analyze_behaviour_statement(behaviour_statement: &mut BehaviourStatementNode, symbol_table: &SymbolTable) -> Result<(), SemanticAnalyzerError> {
+        let target_type = Self::analyze_behaviour_identifier(behaviour_statement.target.as_ref(), symbol_table)?;
+
+        if target_type.access_type != AccessType::Write {
+            return Err(SemanticAnalyzerError::OutputAsTargetSignal());
+        }
+
+        let source_type = Self::analyze_expression(behaviour_statement.source.as_ref(), symbol_table)?;
+
+        if source_type.access_type != AccessType::Read {
+            return Err(SemanticAnalyzerError::InputAsSourceSignal());
+        }
+
+        if target_type.width != source_type.width {
+            return Err(SemanticAnalyzerError::IncompatibleOperandTypes("=".to_string()));
+        }
+
+        behaviour_statement.expression_type = Some(source_type);
+
+        Ok(())
+    }
+
+    fn analyze_behaviour_identifier(behaviour_identifier: &BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
+        let symbol_name = &behaviour_identifier.name.value;
+
+        let symbol = symbol_table.find_recursive(symbol_name)
+            .ok_or_else(|| SemanticAnalyzerError::UndeclaredIdentifier(symbol_name.to_string()))?;
+
+        let mut symbol_type = &symbol.typ;
+
+        // Declared here to extend their scope to function scope
+        let block_refcell;
+        let block;
+        let block_symbol_table;
+
+        let access_type = if let Some(property) = &behaviour_identifier.property {
+            let block_weak = match &symbol_type.specifier {
+                SymbolTypeSpecifier::Block(block) => block,
+                _ => return Err(SemanticAnalyzerError::PropertyAccessOnSignal()),
+            };
+
+            block_refcell = block_weak.upgrade().unwrap();
+            block = RefCell::borrow(block_refcell.borrow());
+
+            let property_name = &property.value;
+
+            let block_symbol_table_refcell = block.symbol_table.as_ref().unwrap();
+            block_symbol_table = RefCell::borrow(block_symbol_table_refcell.borrow());
+
+            let property_symbol = block_symbol_table.find(property_name)
+                .ok_or_else(|| SemanticAnalyzerError::UndeclaredIdentifier(format!("{}.{}", symbol_name, property_name)))?;
+
+            let property_symbol_type = &property_symbol.typ;
+
+            let access_type = match property_symbol_type.specifier {
+                SymbolTypeSpecifier::In => AccessType::Write,
+                SymbolTypeSpecifier::Out => AccessType::Read,
+                _ => return Err(SemanticAnalyzerError::PrivateProperty(symbol_name.to_string(), property_name.to_string())),
+            };
+
+            symbol_type = property_symbol_type;
+
+            access_type
+        } else {
+            match symbol_type.specifier {
+                SymbolTypeSpecifier::In => AccessType::Read,
+                SymbolTypeSpecifier::Out => AccessType::Write,
+                SymbolTypeSpecifier::Block(_) => return Err(SemanticAnalyzerError::BlockAsSignal()),
+            }
+        };
+
+        let width = if let Some(subscript) = &behaviour_identifier.subscript {
+            let (upper_index, lower_index) = Self::analyze_subscript(subscript)?;
+
+            if upper_index > symbol_type.width {
+                return Err(SemanticAnalyzerError::SubscriptExceedsWidth(upper_index, symbol_type.width));
+            }
+
+            upper_index - lower_index
+        } else {
+            symbol_type.width
+        };
+
+        Ok(ExpressionType {
+            access_type,
+            width,
+        })
+    }
+
+    fn analyze_subscript(subscript: &SubscriptNode) -> Result<(u64, u64), SemanticAnalyzerError> {
+        Ok((0, 0))
+    }
+
+    fn analyze_expression(expression: &ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
+        Ok(ExpressionType {
+            access_type: AccessType::Read,
+            width: 1,
+        })
     }
 }

@@ -267,7 +267,8 @@ impl<L: ILexer> Parser<L> {
 
         Ok(Box::new(BehaviourStatementNode {
             target,
-            source
+            source,
+            expression_type: None
         }))
     }
 
