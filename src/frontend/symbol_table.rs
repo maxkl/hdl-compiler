@@ -1,12 +1,12 @@
 
-use failure::Fail;
-
 use std::rc::{Rc, Weak};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
-use crate::symbol::{Symbol, SymbolType, SymbolTypeSpecifier};
-use std::cell::RefCell;
+use failure::Fail;
+
+use super::symbol::{Symbol, SymbolType, SymbolTypeSpecifier};
 
 #[derive(Debug, Fail)]
 pub enum SymbolTableError {

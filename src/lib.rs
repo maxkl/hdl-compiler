@@ -1,13 +1,5 @@
 
-mod ext_char;
-mod char_reader;
-mod lexer;
-mod ast;
-mod symbol;
-mod symbol_table;
-mod parser;
-mod expression_type;
-mod semantic_analyzer;
+mod frontend;
 
 use std::io;
 use std::fs::File;
@@ -15,9 +7,9 @@ use std::io::Read;
 
 use failure::{Error, format_err};
 
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use crate::semantic_analyzer::SemanticAnalyzer;
+use crate::frontend::lexer::Lexer;
+use crate::frontend::parser::Parser;
+use crate::frontend::semantic_analyzer::SemanticAnalyzer;
 
 /// Wrapper (around stdin or a file) that implements `Read`
 struct Input<'a> {

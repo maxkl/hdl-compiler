@@ -2,7 +2,7 @@
 use std::io::BufRead;
 use std::io;
 
-use crate::ext_char::ExtChar;
+use super::ext_char::ExtChar;
 
 pub struct Chars<B: BufRead> {
     reader: CharReader<B>

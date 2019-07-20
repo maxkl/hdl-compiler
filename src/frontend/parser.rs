@@ -4,8 +4,8 @@ use std::cell::RefCell;
 
 use failure::Fail;
 
-use crate::lexer::{ILexer, TokenKind, LexerError, Token, Location, TokenData};
-use crate::ast::*;
+use super::lexer::{ILexer, TokenKind, LexerError, Token, Location, TokenData};
+use super::ast::*;
 
 #[derive(Debug, Fail)]
 pub enum ParserError {

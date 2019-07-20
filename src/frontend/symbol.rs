@@ -2,7 +2,7 @@
 use std::rc::Weak;
 use std::cell::RefCell;
 
-use crate::ast::BlockNode;
+use super::ast::BlockNode;
 
 #[derive(Debug, Clone)]
 pub enum SymbolTypeSpecifier {

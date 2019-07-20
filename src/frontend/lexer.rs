@@ -6,9 +6,9 @@ use std::fmt::Display;
 use failure::Fail;
 use matches::assert_matches;
 
-use crate::char_reader::CharReader;
-use crate::ext_char::ExtChar;
-use crate::ext_char::ExtChar::*;
+use super::char_reader::CharReader;
+use super::ext_char::ExtChar;
+use super::ext_char::ExtChar::*;
 
 #[derive(Debug, Fail)]
 pub enum LexerError {

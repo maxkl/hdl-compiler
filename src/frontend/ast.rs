@@ -2,8 +2,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::symbol_table::SymbolTable;
-use crate::expression_type::ExpressionType;
+use super::symbol_table::SymbolTable;
+use super::expression_type::ExpressionType;
 
 #[derive(Debug)]
 pub struct IdentifierNode {

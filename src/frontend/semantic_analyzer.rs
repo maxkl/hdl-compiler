@@ -5,10 +5,10 @@ use std::borrow::Borrow;
 
 use failure::Fail;
 
-use crate::ast::*;
-use crate::symbol_table::{SymbolTable, SymbolTableError};
-use crate::symbol::{SymbolType, SymbolTypeSpecifier, Symbol};
-use crate::expression_type::{ExpressionType, AccessType};
+use super::ast::*;
+use super::symbol_table::{SymbolTable, SymbolTableError};
+use super::symbol::{SymbolType, SymbolTypeSpecifier, Symbol};
+use super::expression_type::{ExpressionType, AccessType};
 
 #[derive(Debug, Fail)]
 pub enum SemanticAnalyzerError {
