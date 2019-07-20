@@ -283,12 +283,12 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_expression(expression: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
-        let expression_type = match expression {
-            ExpressionNode::Binary(op, left, right) =>
+        let expression_type = match &mut expression.data {
+            ExpressionNodeData::Binary(op, left, right) =>
                 Self::analyze_binary_expression(*op, left, right, symbol_table)?,
-            ExpressionNode::Unary(op, operand) =>
+            ExpressionNodeData::Unary(op, operand) =>
                 Self::analyze_unary_expression(*op, operand, symbol_table)?,
-            ExpressionNode::Variable(behaviour_identifier) => {
+            ExpressionNodeData::Variable(behaviour_identifier) => {
                 let expression_type = Self::analyze_behaviour_identifier(behaviour_identifier.as_mut(), symbol_table)?;
 
                 if expression_type.access_type != AccessType::Read {
@@ -297,7 +297,7 @@ impl SemanticAnalyzer {
 
                 expression_type
             },
-            ExpressionNode::Const(number) => {
+            ExpressionNodeData::Const(number) => {
                 let width = number.width
                     .ok_or_else(|| SemanticAnalyzerError::NoWidth())?;
 
@@ -308,7 +308,7 @@ impl SemanticAnalyzer {
             },
         };
 
-        // TODO: store expression type on expression node -> requires making ExpressionNode a struct
+        expression.typ = Some(expression_type.clone());
 
         Ok(expression_type)
     }

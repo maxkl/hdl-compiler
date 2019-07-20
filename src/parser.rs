@@ -336,7 +336,10 @@ impl<L: ILexer> Parser<L> {
 
             let right = self.parse_bitwise_xor_expression()?;
 
-            left = Box::new(ExpressionNode::Binary(BinaryOp::OR, left, right))
+            left = Box::new(ExpressionNode {
+                data: ExpressionNodeData::Binary(BinaryOp::OR, left, right),
+                typ: None,
+            })
         }
 
         Ok(left)
@@ -350,7 +353,10 @@ impl<L: ILexer> Parser<L> {
 
             let right = self.parse_bitwise_and_expression()?;
 
-            left = Box::new(ExpressionNode::Binary(BinaryOp::XOR, left, right))
+            left = Box::new(ExpressionNode {
+                data: ExpressionNodeData::Binary(BinaryOp::XOR, left, right),
+                typ: None,
+            })
         }
 
         Ok(left)
@@ -364,7 +370,10 @@ impl<L: ILexer> Parser<L> {
 
             let right = self.parse_unary_expression()?;
 
-            left = Box::new(ExpressionNode::Binary(BinaryOp::AND, left, right))
+            left = Box::new(ExpressionNode {
+                data: ExpressionNodeData::Binary(BinaryOp::AND, left, right),
+                typ: None,
+            })
         }
 
         Ok(left)
@@ -377,7 +386,10 @@ impl<L: ILexer> Parser<L> {
 
                 let operand = self.parse_unary_expression()?;
 
-                Ok(Box::new(ExpressionNode::Unary(UnaryOp::NOT, operand)))
+                Ok(Box::new(ExpressionNode {
+                    data: ExpressionNodeData::Unary(UnaryOp::NOT, operand),
+                    typ: None,
+                }))
             },
             _ => self.parse_primary_expression()
         }
@@ -397,12 +409,18 @@ impl<L: ILexer> Parser<L> {
             TokenKind::Identifier => {
                 let identifier = self.parse_behaviour_identifier()?;
 
-                Ok(Box::new(ExpressionNode::Variable(identifier)))
+                Ok(Box::new(ExpressionNode {
+                    data: ExpressionNodeData::Variable(identifier),
+                    typ: None,
+                }))
             },
             TokenKind::Number => {
                 let number = self.parse_number()?;
 
-                Ok(Box::new(ExpressionNode::Const(number)))
+                Ok(Box::new(ExpressionNode {
+                    data: ExpressionNodeData::Const(number),
+                    typ: None,
+                }))
             },
             kind => Err(ParserError::Custom(self.lookahead.location, format!("expected expression but got {}", kind)))
         }

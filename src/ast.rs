@@ -88,9 +88,15 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug)]
-pub enum ExpressionNode {
+pub enum ExpressionNodeData {
     Binary(BinaryOp, Box<ExpressionNode>, Box<ExpressionNode>),
     Unary(UnaryOp, Box<ExpressionNode>),
     Variable(Box<BehaviourIdentifierNode>),
     Const(Box<NumberNode>),
+}
+
+#[derive(Debug)]
+pub struct ExpressionNode {
+    pub data: ExpressionNodeData,
+    pub typ: Option<ExpressionType>,
 }
