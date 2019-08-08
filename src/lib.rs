@@ -1,4 +1,5 @@
 
+mod shared;
 mod frontend;
 
 use std::io;
@@ -10,6 +11,7 @@ use failure::{Error, format_err};
 use crate::frontend::lexer::Lexer;
 use crate::frontend::parser::Parser;
 use crate::frontend::semantic_analyzer::SemanticAnalyzer;
+use crate::frontend::intermediate_generator::IntermediateGenerator;
 
 /// Wrapper (around stdin or a file) that implements `Read`
 struct Input<'a> {
@@ -61,6 +63,10 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     SemanticAnalyzer::analyze(&mut root)?;
 
     println!("{:#?}", root);
+
+    let intermediate = IntermediateGenerator::generate(&root)?;
+
+    println!("{:#?}", intermediate);
 
     Ok(())
 }

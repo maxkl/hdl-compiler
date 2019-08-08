@@ -1,7 +1,8 @@
 
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::cell::RefCell;
 use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
 
 use failure::Fail;
 
@@ -12,6 +13,9 @@ use super::expression_type::{ExpressionType, AccessType};
 
 #[derive(Debug, Fail)]
 pub enum SemanticAnalyzerError {
+    #[fail(display = "block `{}` defined twice", _0)]
+    DuplicateBlock(String),
+
     #[fail(display = "use of undeclared identifier `{}`", _0)]
     UndeclaredIdentifier(String),
 
@@ -68,21 +72,27 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_root(root: &mut RootNode) -> Result<(), SemanticAnalyzerError> {
-        let global_symbol_table = Rc::new(RefCell::new(SymbolTable::new(None)));
+        for (index, block) in root.blocks.iter().enumerate() {
+            let block_name = {
+                let block_ref = RefCell::borrow_mut(block.borrow());
+                block_ref.name.value.clone()
+            };
 
-        for block in &root.blocks {
-            Self::analyze_block(block, &global_symbol_table)?;
+            Self::analyze_block(block, root)?;
+
+            match root.blocks_map.entry(block_name.clone()) {
+                Entry::Occupied(o) => return Err(SemanticAnalyzerError::DuplicateBlock(o.key().to_string())),
+                Entry::Vacant(v) => {
+                    v.insert(index);
+                }
+            }
         }
-
-        root.symbol_table = Some(global_symbol_table);
 
         Ok(())
     }
 
-    fn analyze_block(block: &Rc<RefCell<BlockNode>>, global_symbol_table: &Rc<RefCell<SymbolTable>>) -> Result<(), SemanticAnalyzerError> {
-        let parent_weak = Rc::downgrade(global_symbol_table);
-
-        let symbol_table = Rc::new(RefCell::new(SymbolTable::new(Some(parent_weak))));
+    fn analyze_block(block: &Rc<RefCell<BlockNode>>, root: &RootNode) -> Result<(), SemanticAnalyzerError> {
+        let symbol_table = Rc::new(RefCell::new(SymbolTable::new()));
 
         // Nested scope needed so that `block_ref` is dropped before `block` is used later on to prevent RefCell borrow panics
         {
@@ -92,7 +102,7 @@ impl SemanticAnalyzer {
                 let mut symbol_table_ref = RefCell::borrow_mut(symbol_table.borrow());
 
                 for declaration in &mut block_ref.declarations {
-                    Self::analyze_declaration(declaration, &mut symbol_table_ref)?;
+                    Self::analyze_declaration(declaration, &mut symbol_table_ref, root)?;
                 }
 
                 for behaviour_statement in &mut block_ref.behaviour_statements {
@@ -103,19 +113,11 @@ impl SemanticAnalyzer {
             block_ref.symbol_table = Some(symbol_table);
         }
 
-        let typ = Rc::new(SymbolType {
-            specifier: SymbolTypeSpecifier::Block(Rc::downgrade(block)),
-            width: 0
-        });
-
-        let mut global_symbol_table_ref = RefCell::borrow_mut(global_symbol_table.borrow());
-        global_symbol_table_ref.add_type(typ)?;
-
         Ok(())
     }
 
-    fn analyze_declaration(declaration: &DeclarationNode, symbol_table: &mut SymbolTable) -> Result<(), SemanticAnalyzerError> {
-        let symbol_type = Self::analyze_type(declaration.typ.as_ref(), symbol_table)?;
+    fn analyze_declaration(declaration: &DeclarationNode, symbol_table: &mut SymbolTable, root: &RootNode) -> Result<(), SemanticAnalyzerError> {
+        let symbol_type = Self::analyze_type(declaration.typ.as_ref(), root)?;
 
         for name in &declaration.names {
             Self::analyze_declaration_identifier(name, symbol_table, &symbol_type)?;
@@ -124,22 +126,17 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_type(typ: &TypeNode, symbol_table: &SymbolTable) -> Result<SymbolType, SemanticAnalyzerError> {
+    fn analyze_type(typ: &TypeNode, root: &RootNode) -> Result<SymbolType, SemanticAnalyzerError> {
         let type_specifier = match typ.specifier.as_ref() {
             TypeSpecifierNode::In => SymbolTypeSpecifier::In,
             TypeSpecifierNode::Out => SymbolTypeSpecifier::Out,
             TypeSpecifierNode::Block(name) => {
                 let name = &name.value;
 
-                let block_symbol_type = symbol_table.find_type_recursive(name)
+                let block = root.find_block(name)
                     .ok_or_else(|| SemanticAnalyzerError::UndeclaredIdentifier(name.to_string()))?;
 
-                let block = match &block_symbol_type.specifier {
-                    SymbolTypeSpecifier::Block(block) => block,
-                    _ => return Err(SemanticAnalyzerError::InvalidType(name.to_string(), "block".to_string())),
-                };
-
-                SymbolTypeSpecifier::Block(Weak::clone(block))
+                SymbolTypeSpecifier::Block(Rc::downgrade(block))
             },
         };
 
@@ -164,10 +161,11 @@ impl SemanticAnalyzer {
     fn analyze_declaration_identifier(name: &IdentifierNode, symbol_table: &mut SymbolTable, symbol_type: &SymbolType) -> Result<(), SemanticAnalyzerError> {
         let name = &name.value;
 
-        let symbol = Rc::new(Symbol {
+        let symbol = Symbol {
             name: name.to_string(),
             typ: symbol_type.clone(),
-        });
+            signal_id: 0,
+        };
 
         symbol_table.add(symbol)?;
 
@@ -199,7 +197,7 @@ impl SemanticAnalyzer {
     fn analyze_behaviour_identifier(behaviour_identifier: &mut BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<ExpressionType, SemanticAnalyzerError> {
         let symbol_name = &behaviour_identifier.name.value;
 
-        let symbol = symbol_table.find_recursive(symbol_name)
+        let symbol = symbol_table.find(symbol_name)
             .ok_or_else(|| SemanticAnalyzerError::UndeclaredIdentifier(symbol_name.to_string()))?;
 
         let mut symbol_type = &symbol.typ;

@@ -1,9 +1,11 @@
 
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use super::symbol_table::SymbolTable;
 use super::expression_type::ExpressionType;
+use crate::shared::intermediate::IntermediateBlock;
 
 #[derive(Debug)]
 pub struct IdentifierNode {
@@ -19,8 +21,14 @@ pub struct NumberNode {
 #[derive(Debug)]
 pub struct RootNode {
     pub blocks: Vec<Rc<RefCell<BlockNode>>>,
+    pub blocks_map: HashMap<String, usize>,
+}
 
-    pub symbol_table: Option<Rc<RefCell<SymbolTable>>>
+impl RootNode {
+    pub fn find_block(&self, name: &str) -> Option<&Rc<RefCell<BlockNode>>> {
+        self.blocks_map.get(name)
+            .map(|&index| self.blocks.get(index).unwrap())
+    }
 }
 
 #[derive(Debug)]
@@ -29,7 +37,9 @@ pub struct BlockNode {
     pub declarations: Vec<Box<DeclarationNode>>,
     pub behaviour_statements: Vec<Box<BehaviourStatementNode>>,
 
-    pub symbol_table: Option<Rc<RefCell<SymbolTable>>>
+    pub symbol_table: Option<Rc<RefCell<SymbolTable>>>,
+
+    pub intermediate_block: Option<Weak<IntermediateBlock>>,
 }
 
 #[derive(Debug)]

@@ -21,4 +21,6 @@ pub struct SymbolType {
 pub struct Symbol {
     pub name: String,
     pub typ: SymbolType,
+
+    pub signal_id: u32,
 }

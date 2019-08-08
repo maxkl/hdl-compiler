@@ -6,6 +6,7 @@ use failure::Fail;
 
 use super::lexer::{ILexer, TokenKind, LexerError, Token, Location, TokenData};
 use super::ast::*;
+use std::collections::HashMap;
 
 #[derive(Debug, Fail)]
 pub enum ParserError {
@@ -121,7 +122,7 @@ impl<L: ILexer> Parser<L> {
 
         Ok(Box::new(RootNode {
             blocks,
-            symbol_table: None
+            blocks_map: HashMap::new()
         }))
     }
 
@@ -154,7 +155,8 @@ impl<L: ILexer> Parser<L> {
             name,
             declarations,
             behaviour_statements,
-            symbol_table: None
+            symbol_table: None,
+            intermediate_block: None,
         })))
     }
 

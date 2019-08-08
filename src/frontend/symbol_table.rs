@@ -1,12 +1,11 @@
 
-use std::rc::{Rc, Weak};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use failure::Fail;
 
-use super::symbol::{Symbol, SymbolType, SymbolTypeSpecifier};
+use super::symbol::Symbol;
+use std::slice::{Iter, IterMut};
 
 #[derive(Debug, Fail)]
 pub enum SymbolTableError {
@@ -19,80 +18,49 @@ pub enum SymbolTableError {
 
 #[derive(Debug)]
 pub struct SymbolTable {
-    parent: Option<Weak<RefCell<SymbolTable>>>,
-    symbols: HashMap<String, Rc<Symbol>>,
-    types: HashMap<String, Rc<SymbolType>>,
+    symbols: Vec<Symbol>,
+    symbols_map: HashMap<String, usize>,
 }
 
 impl SymbolTable {
-    pub fn new(parent: Option<Weak<RefCell<SymbolTable>>>) -> SymbolTable {
+    pub fn new() -> SymbolTable {
         SymbolTable {
-            parent,
-            symbols: HashMap::new(),
-            types: HashMap::new()
+            symbols: Vec::new(),
+            symbols_map: HashMap::new(),
         }
     }
 
-    pub fn add(&mut self, symbol: Rc<Symbol>) -> Result<(), SymbolTableError> {
-        match self.symbols.entry(symbol.name.clone()) {
+    pub fn add(&mut self, symbol: Symbol) -> Result<(), SymbolTableError> {
+        match self.symbols_map.entry(symbol.name.clone()) {
             Entry::Occupied(o) => Err(SymbolTableError::SymbolExists(o.key().to_string())),
             Entry::Vacant(v) => {
-                v.insert(symbol);
+                self.symbols.push(symbol);
+
+                v.insert(self.symbols.len() - 1);
 
                 Ok(())
             }
         }
     }
 
-    pub fn add_type(&mut self, typ: Rc<SymbolType>) -> Result<(), SymbolTableError> {
-        let name = match &typ.specifier {
-            SymbolTypeSpecifier::Block(block) => block.upgrade().unwrap().borrow().name.value.clone(),
-            specifier => panic!("type {:?} not supported by symbol table", specifier)
-        };
+    pub fn find(&self, name: &str) -> Option<&Symbol> {
+        self.symbols_map.get(name)
+            .map(|&index| self.symbols.get(index).unwrap())
+    }
 
-        match self.types.entry(name) {
-            Entry::Occupied(o) => Err(SymbolTableError::TypeExists(o.key().to_string())),
-            Entry::Vacant(v) => {
-                v.insert(typ);
-
-                Ok(())
-            }
+    pub fn find_mut(&mut self, name: &str) -> Option<&mut Symbol> {
+        // Can't use .map() because "closure may outlive the current function"
+        match self.symbols_map.get(name) {
+            Some(&index) => Some(self.symbols.get_mut(index).unwrap()),
+            None => None,
         }
     }
 
-    pub fn find(&self, name: &str) -> Option<&Rc<Symbol>> {
-        self.symbols.get(name)
+    pub fn iter(&self) -> Iter<Symbol> {
+        self.symbols.iter()
     }
 
-    pub fn find_recursive(&self, name: &str) -> Option<Rc<Symbol>> {
-        let symbol = self.find(name);
-
-        if symbol.is_none() {
-            if let Some(parent_weak) = &self.parent {
-                let parent_refcell = parent_weak.upgrade().unwrap();
-                let parent = parent_refcell.borrow();
-                return parent.find_recursive(name);
-            }
-        }
-
-        symbol.map(|rc| Rc::clone(rc))
-    }
-
-    pub fn find_type(&self, name: &str) -> Option<&Rc<SymbolType>> {
-        self.types.get(name)
-    }
-
-    pub fn find_type_recursive(&self, name: &str) -> Option<Rc<SymbolType>> {
-        let typ = self.find_type(name);
-
-        if typ.is_none() {
-            if let Some(parent_weak) = &self.parent {
-                let parent_refcell = parent_weak.upgrade().unwrap();
-                let parent = parent_refcell.borrow();
-                return parent.find_type_recursive(name);
-            }
-        }
-
-        typ.map(|rc| Rc::clone(rc))
+    pub fn iter_mut(&mut self) -> IterMut<Symbol> {
+        self.symbols.iter_mut()
     }
 }
