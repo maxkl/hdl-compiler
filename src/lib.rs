@@ -15,7 +15,7 @@ use crate::frontend::intermediate_generator::IntermediateGenerator;
 
 /// Wrapper (around stdin or a file) that implements `Read`
 struct Input<'a> {
-    source: Box<Read + 'a>,
+    source: Box<dyn Read + 'a>,
 }
 
 impl<'a> Read for Input<'a> {
