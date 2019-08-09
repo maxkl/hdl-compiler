@@ -1,5 +1,5 @@
 
-# hdl-compiler
+# HDLCompiler
 
 Compiler for a self-invented hardware description language.
 
@@ -10,23 +10,25 @@ The front end uses a hand-written recursive descent parser (`LL(1)`) to parse th
 The compiler consists of a single executable, `hdlc`. It handles parsing, intermediate code generation, linking and target code generation.
 
 ```
-Usage:
-  hdlc [option]... <file>...
+USAGE:
+    hdlc [FLAGS] [OPTIONS] <FILE>...
 
-Options:
-  -x <type>     Treat subsequent input files as having type <type>.
-                Available types are: 'auto' (default), 'hdl', 'intermediate'
-                If 'auto' is specified, the type is guessed based on the file extension.
-  -d            Treat all input files as intermediate code and dump them.
-  -c            Compile each input file separately to intermediate code.
-  -l            Compile the input files to intermediate code and link them, but don't run the backend.
-  -b <backend>  Use a specific backend.
-                Available backends are: 'LogicSimulator' (default), 'csim'
-  -o <file>     Write output to <file>.
-  -B <arg>      Pass argument <arg> to the backend.
-  -v[level]     Print more log messages.
-  -V, --version Display version information and exit.
-  -h, --help    Display this help and exit.
+FLAGS:
+    -d               Treat all input files as intermediate code and dump them
+    -c               Compile each input file separately to intermediate code
+    -h, --help       Prints help information
+    -l               Compile the input files to intermediate code and link them, but don't run the backend
+    -V, --version    Prints version information
+    -v               Sets the level of verbosity
+
+OPTIONS:
+    -b <BACKEND>        Use a specific backend [possible values: LogicSimulator]
+    -B=<ARG>...         Pass argument ARG to the backend
+    -x <TYPE>...        Treat subsequent input files as having type TYPE [possible values: auto, hdl]
+    -o <FILE>           Write output to FILE
+
+ARGS:
+    <FILE>...    The input files
 ```
 
 Each input file is first compiled to intermediate code internally. Source files will be parsed, analyzed and compiled to intermediate code. Intermediate code files will just be read into memory. If the `-c` flag was passed, the compilation process ends here and the intermediate code files are written to disk.
@@ -162,12 +164,12 @@ block main {
 
 ## Building
 
-The project uses the CMake build system. You need CMake itself and a C compiler (e.g. Clang or GCC).
+The project is written in Rust and therefore needs `rustc` and `cargo`.
 
-It can be built like the following:
+To build it:
 ```sh
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make
+cargo build
+# or
+cargo build --release
 ```
-The executable is then located at `build/bin/hdlc`.
+The executable is then located at `target/debug/hdlc` or `target/release/hdlc`.
