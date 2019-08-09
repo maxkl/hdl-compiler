@@ -36,6 +36,10 @@ enum ComponentData {
     XOR {},
     #[serde(rename = "not")]
     NOT {},
+    #[serde(rename = "togglebutton")]
+    ToggleButton {},
+    #[serde(rename = "led")]
+    LED { #[serde(rename = "offColor")] off_color: String, #[serde(rename = "onColor")] on_color: String },
     #[serde(rename = "custom")]
     Custom { #[serde(rename = "circuitName")] name: String },
     #[serde(rename = "input")]
@@ -150,13 +154,14 @@ impl LogicSimulator {
         let mut circuits = Vec::new();
 
         for block in blocks {
-            circuits.push(Self::generate_circuit(block.borrow(), options)?);
+            let block = block.borrow();
+            circuits.push(Self::generate_circuit(block, options, block.name == "main")?);
         }
 
         Ok(circuits)
     }
 
-    fn generate_circuit(block: &IntermediateBlock, options: &Options) -> Result<CircuitData, BackendError> {
+    fn generate_circuit(block: &IntermediateBlock, options: &Options, is_main: bool) -> Result<CircuitData, BackendError> {
         let io_signal_count = block.input_signal_count + block.output_signal_count;
 
         let mut circuit = Circuit {
@@ -245,10 +250,10 @@ impl LogicSimulator {
             circuit.components.push(component);
         }
 
-        Self::output_circuit(&circuit, &block.name, options)
+        Self::output_circuit(&circuit, &block.name, options, is_main)
     }
 
-    fn output_circuit(circuit: &Circuit, name: &str, options: &Options) -> Result<CircuitData, BackendError> {
+    fn output_circuit(circuit: &Circuit, name: &str, options: &Options, is_main: bool) -> Result<CircuitData, BackendError> {
         let mut circuit_data = CircuitData {
             name: name.to_string(),
             label: name.to_string(),
@@ -380,23 +385,46 @@ impl LogicSimulator {
         }
 
         for i in 0..circuit.input_signal_count {
-            circuit_data.components.push(CommonComponentData {
-                x: -8,
-                y: (i as i32 - circuit.input_signal_count as i32) * 4,
-                data: ComponentData::Input {
-                    label: i.to_string(),
-                },
-            });
+            if is_main {
+                if options.io_components {
+                    circuit_data.components.push(CommonComponentData {
+                        x: -8,
+                        y: (i as i32 - circuit.input_signal_count as i32) * 6,
+                        data: ComponentData::ToggleButton {},
+                    });
+                }
+            } else {
+                circuit_data.components.push(CommonComponentData {
+                    x: -8,
+                    y: (i as i32 - circuit.input_signal_count as i32) * 6 + 1,
+                    data: ComponentData::Input {
+                        label: i.to_string(),
+                    },
+                });
+            }
         }
 
         for i in 0..circuit.output_signal_count {
-            circuit_data.components.push(CommonComponentData {
-                x: (circuit.input_signal_count + circuit.output_signal_count) as i32 * 2 + 1,
-                y: (i as i32 - circuit.output_signal_count as i32) * 4,
-                data: ComponentData::Output {
-                    label: i.to_string(),
-                },
-            });
+            if is_main {
+                if options.io_components {
+                    circuit_data.components.push(CommonComponentData {
+                        x: (circuit.input_signal_count + circuit.output_signal_count) as i32 * 2 + 1,
+                        y: (i as i32 - circuit.output_signal_count as i32) * 6,
+                        data: ComponentData::LED {
+                            off_color: "#888".to_string(),
+                            on_color: "#e00".to_string()
+                        },
+                    });
+                }
+            } else {
+                circuit_data.components.push(CommonComponentData {
+                    x: (circuit.input_signal_count + circuit.output_signal_count) as i32 * 2 + 1,
+                    y: (i as i32 - circuit.output_signal_count as i32) * 6 + 1,
+                    data: ComponentData::Output {
+                        label: i.to_string(),
+                    },
+                });
+            }
         }
 
         for i in 0..circuit.signal_count {
@@ -428,45 +456,45 @@ impl LogicSimulator {
             });
         }
 
-        for i in 0..circuit.input_signal_count {
-            let x = i as i32 * 2;
-            let y = (i as i32 - circuit.input_signal_count as i32) * 4 + 1;
+        if options.io_components || !is_main {
+            for i in 0..circuit.input_signal_count {
+                let x = i as i32 * 2;
+                let y = (i as i32 - circuit.input_signal_count as i32) * 6 + 2;
 
-            circuit_data.connections.push(ConnectionData {
-                x1: -2,
-                y1: y,
-                x2: x,
-                y2: y,
-            });
+                circuit_data.connections.push(ConnectionData {
+                    x1: -2,
+                    y1: y,
+                    x2: x,
+                    y2: y,
+                });
 
-            circuit_data.connections.push(ConnectionData {
-                x1: x,
-                y1: y,
-                x2: x,
-                y2: 0,
-            });
+                circuit_data.connections.push(ConnectionData {
+                    x1: x,
+                    y1: y,
+                    x2: x,
+                    y2: 0,
+                });
+            }
+
+            for i in 0..circuit.output_signal_count {
+                let x = (circuit.input_signal_count + i) as i32 * 2;
+                let y = (i as i32 - circuit.output_signal_count as i32) * 6 + 2;
+
+                circuit_data.connections.push(ConnectionData {
+                    x1: x,
+                    y1: y,
+                    x2: (circuit.input_signal_count + circuit.output_signal_count) as i32 * 2,
+                    y2: y,
+                });
+
+                circuit_data.connections.push(ConnectionData {
+                    x1: x,
+                    y1: y,
+                    x2: x,
+                    y2: 0,
+                });
+            }
         }
-
-        for i in 0..circuit.output_signal_count {
-            let x = (circuit.input_signal_count + i) as i32 * 2;
-            let y = (i as i32 - circuit.output_signal_count as i32) * 4 + 1;
-
-            circuit_data.connections.push(ConnectionData {
-                x1: x,
-                y1: y,
-                x2: (circuit.input_signal_count + circuit.output_signal_count) as i32 * 2,
-                y2: y,
-            });
-
-            circuit_data.connections.push(ConnectionData {
-                x1: x,
-                y1: y,
-                x2: x,
-                y2: 0,
-            });
-        }
-
-        // TODO: IO components
 
         Ok(circuit_data)
     }
