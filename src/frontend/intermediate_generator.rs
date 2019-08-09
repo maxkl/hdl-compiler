@@ -137,7 +137,7 @@ impl IntermediateGenerator {
 
         for i in 0..width {
             let bit = (value & (1 << i)) != 0;
-            let mut stmt = IntermediateStatement::new(if bit { IntermediateOp::Const0 } else { IntermediateOp::Const1 }, 1)?;
+            let mut stmt = IntermediateStatement::new(if bit { IntermediateOp::Const1 } else { IntermediateOp::Const0 }, 1)?;
             stmt.set_output(0, output_signal_id + i as u32);
             intermediate_block.add_statement(stmt);
         }
