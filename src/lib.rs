@@ -1,6 +1,7 @@
 
 mod shared;
 mod frontend;
+mod backend;
 
 use std::io;
 use std::fs::File;
@@ -12,6 +13,7 @@ use crate::frontend::lexer::Lexer;
 use crate::frontend::parser::Parser;
 use crate::frontend::semantic_analyzer::SemanticAnalyzer;
 use crate::frontend::intermediate_generator::IntermediateGenerator;
+use crate::backend::logic_simulator::LogicSimulator;
 
 /// Wrapper (around stdin or a file) that implements `Read`
 struct Input<'a> {
@@ -67,6 +69,8 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     let intermediate = IntermediateGenerator::generate(&root)?;
 
     println!("{:#?}", intermediate);
+
+    LogicSimulator::run(None, &intermediate, &[]);
 
     Ok(())
 }
