@@ -1,0 +1,102 @@
+
+// Adds two 1-bit numbers
+block Adder2x1 {
+    in a, b, carry_in;
+    out sum, carry_out;
+
+    sum = a ^ b ^ carry_in;
+    carry_out = a & b | carry_in & (a ^ b);
+}
+
+// Adds two 2-bit numbers
+block Adder2x2 {
+    in[2] a, b;
+    in carry_in;
+    out[2] sum;
+    out carry_out;
+    block Adder2x1 adder_low, adder_high;
+
+    adder_low.a = a[0];
+    adder_low.b = b[0];
+    adder_low.carry_in = carry_in;
+    sum[0] = adder_low.sum;
+
+    adder_high.a = a[1];
+    adder_high.b = b[1];
+    adder_high.carry_in = adder_low.carry_out;
+    sum[1] = adder_high.sum;
+
+    carry_out = adder_high.carry_out;
+}
+
+// Adds two 4-bit numbers
+block Adder2x4 {
+    in[4] a, b;
+    in carry_in;
+    out[4] sum;
+    out carry_out;
+    block Adder2x2 adder_low, adder_high;
+
+    adder_low.a = a[2:0];
+    adder_low.b = b[2:0];
+    adder_low.carry_in = carry_in;
+    sum[2:0] = adder_low.sum;
+
+    adder_high.a = a[4:2];
+    adder_high.b = b[4:2];
+    adder_high.carry_in = adder_low.carry_out;
+    sum[4:2] = adder_high.sum;
+
+    carry_out = adder_high.carry_out;
+}
+
+// Adds two 8-bit numbers
+block Adder2x8 {
+    in[8] a, b;
+    in carry_in;
+    out[8] sum;
+    out carry_out;
+    block Adder2x4 adder_low, adder_high;
+
+    adder_low.a = a[4:0];
+    adder_low.b = b[4:0];
+    adder_low.carry_in = carry_in;
+    sum[4:0] = adder_low.sum;
+
+    adder_high.a = a[8:4];
+    adder_high.b = b[8:4];
+    adder_high.carry_in = adder_low.carry_out;
+    sum[8:4] = adder_high.sum;
+
+    carry_out = adder_high.carry_out;
+}
+
+// Adds or subtracts two 8-bit numbers using two's complement
+block ALU {
+    in[8] a, b;
+    in subtract;
+    out[8] sum;
+    out carry_out;
+    block Adder2x8 adder;
+
+    adder.a = a;
+    adder.b = b ^ subtract;
+    adder.carry_in = subtract;
+    sum = adder.sum;
+    carry_out = adder.carry_out;
+}
+
+// Forwards all signals to the ALU block
+block main {
+    in[8] a, b;
+    in subtract;
+    out[8] sum;
+    out carry_out;
+    block ALU alu;
+
+    alu.a = a;
+    alu.b = b;
+    alu.subtract = subtract;
+    sum = alu.sum;
+    carry_out = alu.carry_out;
+}
