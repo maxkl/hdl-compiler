@@ -5,7 +5,7 @@ use std::borrow::Borrow;
 
 use failure::Fail;
 
-use crate::shared::intermediate::{IntermediateBlock, IntermediateError, IntermediateStatement, IntermediateOp};
+use crate::shared::intermediate::{IntermediateBlock, IntermediateError, IntermediateStatement, IntermediateOp, Intermediate};
 use super::ast::*;
 use super::symbol::SymbolTypeSpecifier;
 use crate::frontend::symbol_table::SymbolTable;
@@ -28,7 +28,7 @@ pub struct IntermediateGenerator {
 }
 
 impl IntermediateGenerator {
-    pub fn generate(root: &RootNode) -> Result<Vec<Rc<IntermediateBlock>>, IntermediateGeneratorError> {
+    pub fn generate(root: &RootNode) -> Result<Intermediate, IntermediateGeneratorError> {
         Self::generate_blocks(root)
     }
 

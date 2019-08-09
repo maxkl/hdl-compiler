@@ -5,78 +5,209 @@ mod backend;
 
 use std::io;
 use std::fs::File;
-use std::io::Read;
 
 use failure::{Error, format_err};
+use clap::{App, Arg};
 
-use crate::frontend::lexer::Lexer;
-use crate::frontend::parser::Parser;
-use crate::frontend::semantic_analyzer::SemanticAnalyzer;
-use crate::frontend::intermediate_generator::IntermediateGenerator;
-use crate::backend::logic_simulator::LogicSimulator;
+use crate::shared::intermediate::Intermediate;
+use std::path::Path;
+use std::ffi::OsStr;
 
-/// Wrapper (around stdin or a file) that implements `Read`
-struct Input<'a> {
-    source: Box<dyn Read + 'a>,
-}
+const FRONTENDS: [(&str, fn(frontend::Input) -> frontend::Result); 1] = [
+    ("hdl", frontend::compile),
+];
 
-impl<'a> Read for Input<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.source.read(buf)
-    }
-}
+const BACKENDS: [(&str, fn(Option<&str>, &Intermediate, &[&str]) -> backend::Result); 1] = [
+    ("LogicSimulator", backend::logic_simulator::LogicSimulator::run),
+];
 
-impl<'a> Input<'a> {
-    fn from_stdin(stdin: &'a io::Stdin) -> Input<'a> {
-        Input {
-            source: Box::new(stdin.lock()),
-        }
-    }
-
-    fn from_file(f: &'a File) -> Input<'a> {
-        Input {
-            source: Box::new(f),
-        }
-    }
-}
+const INPUT_FILE_TYPES: [(&str, &str); 2] = [
+    ("hdl", "hdl"),
+    ("hdli", "intermediate"),
+];
 
 pub fn run(args: Vec<String>) -> Result<(), Error> {
-    // These are declared here to prolong their lifetime to outside the if-clause
-    let stdin;
-    let f;
+    let frontend_names = {
+        let mut names = vec!["auto"];
 
-    // Read from stdin when no arguments are supplied or read from a file if one is supplied
-    let source = if args.len() == 1 {
-        stdin = io::stdin();
-        Input::from_stdin(&stdin)
-    } else if args.len() >= 2 {
-        f = File::open(&args[1])?;
-        Input::from_file(&f)
+        names.extend(FRONTENDS.iter()
+            .map(|frontend| frontend.0));
+
+        names
+    };
+    let default_frontend = frontend_names[0];
+
+    let backend_names = BACKENDS.iter()
+        .map(|backend| backend.0)
+        .collect::<Vec<_>>();
+    let default_backend = backend_names[0];
+
+    let matches = App::new("HDLCompiler")
+        .version("0.1")
+        .author("Max Klein <max@maxkl.de>")
+        .arg(Arg::with_name("input_file_types")
+            .short("x")
+            .value_name("TYPE")
+            .help("Treat subsequent input files as having type TYPE")
+            .multiple(true)
+            .number_of_values(1)
+            .possible_values(&frontend_names))
+        .arg(Arg::with_name("dump_intermediate")
+            .short("d")
+            .help("Treat all input files as intermediate code and dump them"))
+        .arg(Arg::with_name("frontend_only")
+            .short("c")
+            .help("Compile each input file separately to intermediate code"))
+        .arg(Arg::with_name("link_only")
+            .short("l")
+            .help("Compile the input files to intermediate code and link them, but don't run the backend"))
+        .arg(Arg::with_name("backend")
+            .short("b")
+            .value_name("BACKEND")
+            .help("Use a specific backend")
+            .possible_values(&backend_names))
+        .arg(Arg::with_name("output_file")
+            .short("o")
+            .value_name("FILE")
+            .help("Write output to FILE"))
+        .arg(Arg::with_name("backend_args")
+            .short("B")
+            .value_name("ARG")
+            .help("Pass argument ARG to the backend")
+            .multiple(true)
+            .require_delimiter(true)
+            .require_equals(true))
+        .arg(Arg::with_name("verbosity")
+            .short("v")
+            .multiple(true)
+            .help("Sets the level of verbosity"))
+        .arg(Arg::with_name("input_files")
+            .multiple(true)
+            .required(true))
+        .get_matches_from(args);
+
+    let verbosity = matches.occurrences_of("verbosity");
+
+    let dump_intermediate = matches.is_present("dump_intermediate");
+
+    let frontend_only = matches.is_present("frontend_only");
+
+    let link_only = matches.is_present("link_only");
+
+    let backend_name = matches.value_of("backend").unwrap_or(default_backend);
+
+    let output_file = matches.value_of("output_file");
+
+    let input_files = if let Some(input_files) = matches.values_of("input_files") {
+        let input_file_indices = matches.indices_of("input_files").unwrap();
+
+        let input_files_iter = input_files.zip(input_file_indices);
+
+        let input_types = if let Some(input_types) = matches.values_of("input_file_types") {
+            let input_type_indices = matches.indices_of("input_file_types").unwrap();
+
+            input_types.zip(input_type_indices)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        let input_files_with_type = input_files_iter
+            .map(|input_file| {
+                let next_index = input_types
+                    .binary_search_by_key(&input_file.1, |input_type| input_type.1)
+                    .unwrap_err();
+
+                let input_type = if next_index > 0 {
+                    input_types[next_index - 1].0
+                } else {
+                    default_frontend
+                };
+
+                (input_file.0, input_type)
+            })
+            .collect::<Vec<_>>();
+
+        input_files_with_type
     } else {
-        return Err(format_err!("invalid number of arguments"));
+        Vec::new()
     };
 
-    let lexer = Lexer::new(source);
+    let backend_args = matches.values_of("backend_args")
+        .map(|backend_args| backend_args.collect::<Vec<_>>())
+        .unwrap_or(Vec::new());
 
-    let mut parser = Parser::new(lexer)?;
+    if dump_intermediate {
+        // TODO: read and dump intermediate files
+        return Err(format_err!("not implemented yet"));
+    }
 
-    let mut root = parser.parse()?;
+    if input_files.len() > 0 && frontend_only && output_file.is_some() {
+        return Err(format_err!("-o specified for multiple output files"));
+    }
 
-    SemanticAnalyzer::analyze(&mut root)?;
+    let mut intermediate_files = Vec::new();
 
-    println!("{:#?}", root);
+    for input_file in input_files {
+        let frontend_name = if input_file.1 == "auto" {
+            if input_file.0 == "-" {
+                return Err(format_err!("reading from stdin requires explicit file type"));
+            }
 
-    let intermediate = IntermediateGenerator::generate(&root)?;
+            Path::new(input_file.0)
+                .extension()
+                .and_then(OsStr::to_str)
+                .and_then(|ext| INPUT_FILE_TYPES.iter()
+                    .find_map(|file_type| if file_type.0 == ext {
+                        Some(file_type.1)
+                    } else {
+                        None
+                    }))
+                .ok_or_else(|| format_err!("could not determine frontend for file '{}'", input_file.0))?
+        } else {
+            input_file.1
+        };
 
-    println!("{:#?}", intermediate);
+        let frontend_fn = FRONTENDS.iter()
+            .find(|frontend| frontend.0 == frontend_name)
+            .unwrap().1;
 
-    let backend_args= if args.len() > 2 {
-        &args[2..]
-    } else {
-        &[]
-    };
+        let stdin;
+        let f;
 
-    LogicSimulator::run(None, &intermediate, backend_args)?;
+        let input = if input_file.0 == "-" {
+            stdin = io::stdin();
+            frontend::Input::from_stdin(&stdin)
+        } else {
+            f = File::open(input_file.0)?;
+            frontend::Input::from_file(&f)
+        };
+
+        let intermediate = frontend_fn(input)?;
+
+        if frontend_only {
+            // TODO: output intermediate file
+            return Err(format_err!("not implemented yet"));
+        } else {
+            intermediate_files.push(intermediate);
+        }
+    }
+
+    if !frontend_only {
+        // TODO: link
+        let linked_intermediate = &intermediate_files[0];
+
+        if link_only {
+            // TODO: output intermediate file
+            return Err(format_err!("not implemented yet"));
+        } else {
+            let backend_fn = BACKENDS.iter()
+                .find(|backend| backend.0 == backend_name)
+                .unwrap().1;
+
+            backend_fn(output_file, linked_intermediate, backend_args.as_slice())?;
+        }
+    }
 
     Ok(())
 }

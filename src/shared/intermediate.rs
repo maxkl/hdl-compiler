@@ -1,5 +1,5 @@
 
-use std::rc::Weak;
+use std::rc::{Weak, Rc};
 
 use failure::Fail;
 
@@ -17,6 +17,8 @@ pub enum IntermediateError {
     #[fail(display = "size {} is invalid for {} statement", _1, _0)]
     StatementSizeInvalid(String, u16),
 }
+
+pub type Intermediate = Vec<Rc<IntermediateBlock>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum IntermediateOp {

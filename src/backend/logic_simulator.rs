@@ -8,8 +8,9 @@ use serde::{Serialize, Deserialize};
 use serde_json;
 use matches::matches;
 
-use crate::shared::intermediate::{IntermediateBlock, IntermediateOp};
-use crate::backend::error::BackendError;
+use crate::shared::intermediate::{IntermediateBlock, IntermediateOp, Intermediate};
+use crate::backend;
+use crate::backend::BackendError;
 
 struct Options {
     io_components: bool,
@@ -109,13 +110,13 @@ pub struct LogicSimulator {
 }
 
 impl LogicSimulator {
-    pub fn run(output_path: Option<&str>, blocks: &Vec<Rc<IntermediateBlock>>, args: &[String]) -> Result<(), BackendError> {
+    pub fn run(output_path: Option<&str>, blocks: &Intermediate, args: &[&str]) -> backend::Result {
         let mut options = Options {
             io_components: true,
         };
 
-        for arg in args {
-            match arg.as_ref() {
+        for &arg in args {
+            match arg {
                 "--no-io-components" => options.io_components = false,
                 arg => return Err(BackendError::Custom(format!("unrecognized backend option '{}'", arg))),
             }
