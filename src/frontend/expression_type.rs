@@ -5,7 +5,7 @@ pub enum AccessType {
     Write,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct ExpressionType {
     pub access_type: AccessType,
     pub width: u64,

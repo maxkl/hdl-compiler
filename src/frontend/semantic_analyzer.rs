@@ -10,6 +10,7 @@ use super::ast::*;
 use super::symbol_table::{SymbolTable, SymbolTableError};
 use super::symbol::{SymbolType, SymbolTypeSpecifier, Symbol};
 use super::expression_type::{ExpressionType, AccessType};
+use std::cmp;
 
 #[derive(Debug, Fail)]
 pub enum SemanticAnalyzerError {
@@ -334,10 +335,17 @@ impl SemanticAnalyzer {
             return Err(SemanticAnalyzerError::InputAsSourceSignal());
         }
 
-        if expression_type_left != expression_type_right {
+        let left_width = expression_type_left.width;
+        let right_width = expression_type_right.width;
+
+        // Allow one of the operands to be a single bit, in which case it will be applied to every bit of the other operand
+        if left_width != right_width && left_width != 1 && right_width != 1 {
             return Err(SemanticAnalyzerError::IncompatibleOperandTypes("binary".to_string()));
         }
 
-        Ok(expression_type_left)
+        Ok(ExpressionType {
+            access_type: AccessType::Read,
+            width: cmp::max(left_width, right_width),
+        })
     }
 }

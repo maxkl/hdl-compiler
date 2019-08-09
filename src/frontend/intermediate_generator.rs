@@ -185,9 +185,26 @@ impl IntermediateGenerator {
 
                 for i in 0..expression_width {
                     let mut stmt = IntermediateStatement::new(intermediate_op, 2)?;
-                    stmt.set_input(0, input_signal_id_left + i as u32);
-                    stmt.set_input(1, input_signal_id_right + i as u32);
+
+                    // One of the operands may only be a single bit wide, in which case it is applied to every bit
+
+                    let input_a = if left.typ.as_ref().unwrap().width > 1 {
+                        input_signal_id_left + i as u32
+                    } else {
+                        input_signal_id_left
+                    };
+
+                    let input_b = if right.typ.as_ref().unwrap().width > 1 {
+                        input_signal_id_right + i as u32
+                    } else {
+                        input_signal_id_right
+                    };
+
+                    stmt.set_input(0, input_a);
+                    stmt.set_input(1, input_b);
+
                     stmt.set_output(0, output_signal_id + i as u32);
+
                     intermediate_block.add_statement(stmt);
                 }
             },
