@@ -82,6 +82,8 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
             .multiple(true)
             .help("Sets the level of verbosity"))
         .arg(Arg::with_name("input_files")
+            .value_name("FILE")
+            .help("The input files")
             .multiple(true)
             .required(true))
         .get_matches_from(args);
