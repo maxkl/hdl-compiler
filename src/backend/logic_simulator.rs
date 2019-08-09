@@ -9,6 +9,7 @@ use serde_json;
 use matches::matches;
 
 use crate::shared::intermediate::{IntermediateBlock, IntermediateOp};
+use crate::backend::error::BackendError;
 
 struct Options {
     io_components: bool,
@@ -104,7 +105,7 @@ pub struct LogicSimulator {
 }
 
 impl LogicSimulator {
-    pub fn run(output_path: Option<&str>, blocks: &Vec<Rc<IntermediateBlock>>, args: &[String]) {
+    pub fn run(output_path: Option<&str>, blocks: &Vec<Rc<IntermediateBlock>>, args: &[String]) -> Result<(), BackendError> {
         let mut options = Options {
             io_components: true,
         };
@@ -112,26 +113,30 @@ impl LogicSimulator {
         for arg in args {
             match arg.as_ref() {
                 "--no-io-components" => options.io_components = false,
-                arg => panic!("unrecognized backend option '{}'", arg),
+                arg => return Err(BackendError::Custom(format!("unrecognized backend option '{}'", arg))),
             }
         }
 
         let output_path = output_path.unwrap_or("circuit.json");
 
-        let circuits = Self::generate_circuits(blocks, &options);
+        let circuits = Self::generate_circuits(blocks, &options)?;
 
         let data = FileData {
             version: 1,
             circuits,
         };
 
-        let f = File::create(output_path).expect("Unable to create output file");
+        let f = File::create(output_path)
+            .map_err(|e| BackendError::Custom(format!("Unable to create output file: {}", e)))?;
         let writer = BufWriter::new(f);
 
-        serde_json::to_writer(writer, &data).unwrap();
+        serde_json::to_writer(writer, &data)
+            .map_err(|e| BackendError::Custom(format!("Unable to write JSON: {}", e)))?;
+
+        Ok(())
     }
 
-    fn generate_circuits(blocks: &Vec<Rc<IntermediateBlock>>, options: &Options) -> Vec<CircuitData> {
+    fn generate_circuits(blocks: &Vec<Rc<IntermediateBlock>>, options: &Options) -> Result<Vec<CircuitData>, BackendError> {
         let main_found = blocks.iter()
             .any(|block| {
                 let block: &IntermediateBlock = block.borrow();
@@ -139,19 +144,19 @@ impl LogicSimulator {
             });
 
         if !main_found {
-            panic!("main block not defined");
+            return Err(BackendError::Custom("main block not defined".to_string()));
         }
 
         let mut circuits = Vec::new();
 
         for block in blocks {
-            circuits.push(Self::generate_circuit(block.borrow(), options));
+            circuits.push(Self::generate_circuit(block.borrow(), options)?);
         }
 
-        circuits
+        Ok(circuits)
     }
 
-    fn generate_circuit(block: &IntermediateBlock, options: &Options) -> CircuitData {
+    fn generate_circuit(block: &IntermediateBlock, options: &Options) -> Result<CircuitData, BackendError> {
         let io_signal_count = block.input_signal_count + block.output_signal_count;
 
         let mut circuit = Circuit {
@@ -220,7 +225,7 @@ impl LogicSimulator {
                 IntermediateOp::OR => ComponentType::OR,
                 IntermediateOp::XOR => ComponentType::XOR,
                 IntermediateOp::NOT => ComponentType::NOT,
-                _ => panic!("unsupported op {} in intermediate statement", stmt.op as u32),
+                _ => return Err(BackendError::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op))),
             };
 
             let mut component = Component {
@@ -243,7 +248,7 @@ impl LogicSimulator {
         Self::output_circuit(&circuit, &block.name, options)
     }
 
-    fn output_circuit(circuit: &Circuit, name: &str, options: &Options) -> CircuitData {
+    fn output_circuit(circuit: &Circuit, name: &str, options: &Options) -> Result<CircuitData, BackendError> {
         let mut circuit_data = CircuitData {
             name: name.to_string(),
             label: name.to_string(),
@@ -251,7 +256,7 @@ impl LogicSimulator {
             connections: Vec::new(),
         };
 
-        let component_offset = (circuit.signal_count - 1) * 2 + 2;
+        let component_offset = (circuit.signal_count as i32 - 1) * 2 + 2;
         let output_connection_offset = component_offset + 13 + 2;
 
         let mut top_offset = 0;
@@ -262,9 +267,9 @@ impl LogicSimulator {
             match &component.typ {
                 ComponentType::Connect => {
                     circuit_data.connections.push(ConnectionData {
-                        x1: (component.inputs[0] * 2) as i32,
+                        x1: component.inputs[0] as i32 * 2,
                         y1: top_offset,
-                        x2: (output_connection_offset + component.outputs[0] * 2) as i32,
+                        x2: output_connection_offset + component.outputs[0] as i32 * 2,
                         y2: top_offset,
                     });
                 },
@@ -281,7 +286,7 @@ impl LogicSimulator {
                 },
                 ComponentType::AND => {
                     circuit_data.components.push(CommonComponentData {
-                        x: (component_offset + 4) as i32,
+                        x: component_offset + 4,
                         y: top_offset,
                         data: ComponentData::AND {
                             inputs: component.inputs.len() as u32
@@ -292,7 +297,7 @@ impl LogicSimulator {
                 },
                 ComponentType::OR => {
                     circuit_data.components.push(CommonComponentData {
-                        x: (component_offset + 4) as i32,
+                        x: component_offset + 4,
                         y: top_offset,
                         data: ComponentData::OR {
                             inputs: component.inputs.len() as u32
@@ -303,7 +308,7 @@ impl LogicSimulator {
                 },
                 ComponentType::XOR => {
                     circuit_data.components.push(CommonComponentData {
-                        x: (component_offset + 4) as i32,
+                        x: component_offset + 4,
                         y: top_offset,
                         data: ComponentData::XOR {},
                     });
@@ -312,7 +317,7 @@ impl LogicSimulator {
                 },
                 ComponentType::NOT => {
                     circuit_data.components.push(CommonComponentData {
-                        x: (component_offset + 4) as i32,
+                        x: component_offset + 4,
                         y: top_offset,
                         data: ComponentData::NOT {},
                     });
@@ -321,7 +326,7 @@ impl LogicSimulator {
                 },
                 ComponentType::Circuit(name) => {
                     circuit_data.components.push(CommonComponentData {
-                        x: (component_offset + 1) as i32,
+                        x: component_offset + 1,
                         y: top_offset,
                         data: ComponentData::Custom {
                             name: name.clone(),
@@ -356,7 +361,7 @@ impl LogicSimulator {
                     circuit_data.connections.push(ConnectionData {
                         x1: input_signal_id as i32 * 2,
                         y1: y,
-                        x2: component_offset as i32 + 13 / 2 - component_width / 2,
+                        x2: component_offset + 13 / 2 - component_width / 2,
                         y2: y,
                     });
                 }
@@ -365,9 +370,9 @@ impl LogicSimulator {
                     let y = output_top_offset + i as i32 * 2;
 
                     circuit_data.connections.push(ConnectionData {
-                        x1: output_connection_offset as i32 - 2 - 13 / 2 + component_width / 2,
+                        x1: output_connection_offset - 2 - 13 / 2 + component_width / 2,
                         y1: y,
-                        x2: output_connection_offset as i32 + output_signal_id as i32 * 2,
+                        x2: output_connection_offset + output_signal_id as i32 * 2,
                         y2: y,
                     });
                 }
@@ -400,7 +405,7 @@ impl LogicSimulator {
             circuit_data.connections.push(ConnectionData {
                 x1: i as i32 * 2,
                 y1: top_offset,
-                x2: output_connection_offset as i32 + i as i32 * 2,
+                x2: output_connection_offset + i as i32 * 2,
                 y2: top_offset,
             });
 
@@ -416,9 +421,9 @@ impl LogicSimulator {
             });
 
             circuit_data.connections.push(ConnectionData {
-                x1: output_connection_offset as i32 + i as i32 * 2,
+                x1: output_connection_offset + i as i32 * 2,
                 y1: 0,
-                x2: output_connection_offset as i32 + i as i32 * 2,
+                x2: output_connection_offset + i as i32 * 2,
                 y2: top_offset,
             });
         }
@@ -463,6 +468,6 @@ impl LogicSimulator {
 
         // TODO: IO components
 
-        circuit_data
+        Ok(circuit_data)
     }
 }

@@ -70,7 +70,13 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     println!("{:#?}", intermediate);
 
-    LogicSimulator::run(None, &intermediate, &args[2..]);
+    let backend_args= if args.len() > 2 {
+        &args[2..]
+    } else {
+        &[]
+    };
+
+    LogicSimulator::run(None, &intermediate, backend_args)?;
 
     Ok(())
 }
