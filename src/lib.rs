@@ -49,7 +49,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     let source = if args.len() == 1 {
         stdin = io::stdin();
         Input::from_stdin(&stdin)
-    } else if args.len() == 2 {
+    } else if args.len() >= 2 {
         f = File::open(&args[1])?;
         Input::from_file(&f)
     } else {
@@ -70,7 +70,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     println!("{:#?}", intermediate);
 
-    LogicSimulator::run(None, &intermediate, &[]);
+    LogicSimulator::run(None, &intermediate, &args[2..]);
 
     Ok(())
 }

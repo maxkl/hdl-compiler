@@ -105,11 +105,16 @@ pub struct LogicSimulator {
 
 impl LogicSimulator {
     pub fn run(output_path: Option<&str>, blocks: &Vec<Rc<IntermediateBlock>>, args: &[String]) {
-        // TODO: parse args
-
-        let options = Options {
+        let mut options = Options {
             io_components: true,
         };
+
+        for arg in args {
+            match arg.as_ref() {
+                "--no-io-components" => options.io_components = false,
+                arg => panic!("unrecognized backend option '{}'", arg),
+            }
+        }
 
         let output_path = output_path.unwrap_or("circuit.json");
 
