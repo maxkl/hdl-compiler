@@ -1,17 +1,19 @@
 
 mod shared;
 mod frontend;
+mod linker;
 mod backend;
 
 use std::io;
 use std::fs::File;
+use std::path::Path;
+use std::ffi::OsStr;
 
 use failure::{Error, format_err};
 use clap::{App, Arg};
 
 use crate::shared::intermediate::Intermediate;
-use std::path::Path;
-use std::ffi::OsStr;
+use crate::linker::Linker;
 
 const FRONTENDS: [(&str, fn(frontend::Input) -> frontend::Result); 1] = [
     ("hdl", frontend::compile),
@@ -196,8 +198,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     }
 
     if !frontend_only {
-        // TODO: link
-        let linked_intermediate = &intermediate_files[0];
+        let linked_intermediate = Linker::link(&intermediate_files)?;
 
         if link_only {
             // TODO: output intermediate file
@@ -207,7 +208,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
                 .find(|backend| backend.0 == backend_name)
                 .unwrap().1;
 
-            backend_fn(output_file, linked_intermediate, backend_args.as_slice())?;
+            backend_fn(output_file, &linked_intermediate, backend_args.as_slice())?;
         }
     }
 
