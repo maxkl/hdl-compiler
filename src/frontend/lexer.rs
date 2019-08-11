@@ -1,38 +1,41 @@
 
 use std::io::{BufReader, Read};
-use std::{io, fmt};
+use std::fmt;
 use std::fmt::Display;
 
-use failure::Fail;
 use matches::assert_matches;
+use derive_more::Display;
 
 use super::char_reader::CharReader;
 use super::ext_char::ExtChar;
 use super::ext_char::ExtChar::*;
+use crate::shared::error;
 
-#[derive(Debug, Fail)]
-pub enum LexerError {
-    #[fail(display = "unexpected character: '{}' at {}", _0, _1)]
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "unexpected character: '{}' at {}", _0, _1)]
     UnexpectedCharacter(char, Location),
 
-    #[fail(display = "unexpected end of file at {}", _0)]
+    #[display(fmt = "unexpected end of file at {}", _0)]
     UnexpectedEndOfFile(Location),
 
-    #[fail(display = "number literal has no width specified after width separator at {}", _0)]
+    #[display(fmt = "number literal has no width specified after width separator at {}", _0)]
     NumberLiteralNoWidth(Location),
 
-    #[fail(display = "number literal with width of 0 at {}", _0)]
+    #[display(fmt = "number literal with width of 0 at {}", _0)]
     NumberLiteralWidthZero(Location),
 
-    #[fail(display = "number literal with width greater than 64 at {}", _0)]
+    #[display(fmt = "number literal with width greater than 64 at {}", _0)]
     NumberLiteralWidthTooBig(Location),
 
-    #[fail(display = "number literal with value that doesn't fit into a register of specified width at {}", _0)]
+    #[display(fmt = "number literal with value that doesn't fit into a register of specified width at {}", _0)]
     NumberLiteralValueTooBig(Location),
 
-    #[fail(display = "{}", _0)]
-    Io(#[cause] io::Error),
+    #[display(fmt = "failed to read from input file")]
+    Read,
 }
+
+pub type Error = error::Error<ErrorKind>;
 
 /// Trait for the Lexer to implement.
 ///
@@ -42,7 +45,7 @@ pub trait ILexer {
 //    type Token = Token;
 //    type Error = LexerError;
 
-    fn get_token(&mut self) -> Result<Token, LexerError>;
+    fn get_token(&mut self) -> Result<Token, Error>;
 }
 
 /// Location of a token in the source code
@@ -170,7 +173,7 @@ impl<R: Read> ILexer for Lexer<R> {
 //    type Error = LexerError;
 
     /// Reads from the source stream until a token is complete and returns it
-    fn get_token(&mut self) -> Result<Token, LexerError> {
+    fn get_token(&mut self) -> Result<Token, Error> {
         let mut c;
 
         // Skip whitespace
@@ -258,19 +261,19 @@ impl<R: Read> ILexer for Lexer<R> {
 
                         let width = match self.parse_number(&mut c)? {
                             Some(v) => v,
-                            None => return Err(LexerError::NumberLiteralNoWidth(token_location)),
+                            None => return Err(ErrorKind::NumberLiteralNoWidth(token_location).into()),
                         };
 
                         if width == 0 {
-                            return Err(LexerError::NumberLiteralWidthZero(token_location));
+                            return Err(ErrorKind::NumberLiteralWidthZero(token_location).into());
                         }
 
                         if width > 64 {
-                            return Err(LexerError::NumberLiteralWidthTooBig(token_location));
+                            return Err(ErrorKind::NumberLiteralWidthTooBig(token_location).into());
                         }
 
                         if value > (1 << width) - 1 {
-                            return Err(LexerError::NumberLiteralValueTooBig(token_location));
+                            return Err(ErrorKind::NumberLiteralValueTooBig(token_location).into());
                         }
 
                         Some(width)
@@ -282,7 +285,7 @@ impl<R: Read> ILexer for Lexer<R> {
 
                     Ok(Token::new_with_data(TokenKind::Number, TokenData::Number { value, width }, token_location))
                 } else {
-                    Err(LexerError::UnexpectedCharacter(x, token_location))
+                    Err(ErrorKind::UnexpectedCharacter(x, token_location).into())
                 }
             },
             // EndOfFile
@@ -308,7 +311,7 @@ impl<R: Read> Lexer<R> {
     /// This method also keeps track of the current source code line and column number which is
     /// stored in `self.location`.
     /// When the end of the file is reached, this method returns `None`.
-    fn get_char(&mut self) -> Result<ExtChar, LexerError> {
+    fn get_char(&mut self) -> Result<ExtChar, Error> {
         let result = match self.next_char {
             Some(c) => {
                 self.next_char = None;
@@ -331,7 +334,7 @@ impl<R: Read> Lexer<R> {
             }
         }
 
-        result.map_err(|e| LexerError::Io(e))
+        result.map_err(|e| Error::with_source(ErrorKind::Read, e))
     }
 
     /// Undo the last call to `get_char()`
@@ -353,7 +356,7 @@ impl<R: Read> Lexer<R> {
         }
     }
 
-    fn parse_number(&mut self, c: &mut ExtChar) -> Result<Option<u64>, LexerError> {
+    fn parse_number(&mut self, c: &mut ExtChar) -> Result<Option<u64>, Error> {
         if c.is_eof() || !c.get_char().unwrap().is_numeric() {
             return Ok(None);
         }
@@ -387,7 +390,7 @@ mod tests {
 
     use matches::assert_matches;
 
-    fn expect_tokens(source_text: &str, expected_tokens: &Vec<Token>) -> Result<(), LexerError> {
+    fn expect_tokens(source_text: &str, expected_tokens: &Vec<Token>) -> Result<(), Error> {
         let source = Cursor::new(source_text);
 
         let mut lexer = Lexer::new(source);
@@ -469,10 +472,14 @@ mod tests {
 
         let result = lexer.get_token();
 
-        assert_matches!(result, Err(LexerError::NumberLiteralNoWidth(_)));
-
-        if let Err(LexerError::NumberLiteralNoWidth(l)) = result {
-            assert_eq!(Location::new(1, 1), l);
+        if let Err(err) = result {
+            if let ErrorKind::NumberLiteralNoWidth(l) = err.kind {
+                assert_eq!(Location::new(1, 1), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
         }
     }
 
@@ -486,10 +493,14 @@ mod tests {
 
         let result = lexer.get_token();
 
-        assert_matches!(result, Err(LexerError::NumberLiteralWidthZero(_)));
-
-        if let Err(LexerError::NumberLiteralWidthZero(l)) = result {
-            assert_eq!(Location::new(1, 1), l);
+        if let Err(err) = result {
+            if let ErrorKind::NumberLiteralWidthZero(l) = err.kind {
+                assert_eq!(Location::new(1, 1), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
         }
     }
 
@@ -503,10 +514,14 @@ mod tests {
 
         let result = lexer.get_token();
 
-        assert_matches!(result, Err(LexerError::NumberLiteralWidthTooBig(_)));
-
-        if let Err(LexerError::NumberLiteralWidthTooBig(l)) = result {
-            assert_eq!(Location::new(1, 1), l);
+        if let Err(err) = result {
+            if let ErrorKind::NumberLiteralWidthTooBig(l) = err.kind {
+                assert_eq!(Location::new(1, 1), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
         }
     }
 
@@ -520,10 +535,14 @@ mod tests {
 
         let result = lexer.get_token();
 
-        assert_matches!(result, Err(LexerError::NumberLiteralValueTooBig(_)));
-
-        if let Err(LexerError::NumberLiteralValueTooBig(l)) = result {
-            assert_eq!(Location::new(1, 1), l);
+        if let Err(err) = result {
+            if let ErrorKind::NumberLiteralValueTooBig(l) = err.kind {
+                assert_eq!(Location::new(1, 1), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
         }
     }
 
@@ -556,11 +575,15 @@ mod tests {
 
         let result = lexer.get_token();
 
-        assert_matches!(result, Err(LexerError::UnexpectedCharacter(_, _)));
-
-        if let Err(LexerError::UnexpectedCharacter(c, l)) = result {
-            assert_eq!('?', c);
-            assert_eq!(Location::new(1, 5), l);
+        if let Err(err) = result {
+            if let ErrorKind::UnexpectedCharacter(c, l) = err.kind {
+                assert_eq!('?', c);
+                assert_eq!(Location::new(1, 5), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
         }
     }
 

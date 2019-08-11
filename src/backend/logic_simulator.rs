@@ -10,7 +10,7 @@ use matches::matches;
 
 use crate::shared::intermediate::{IntermediateBlock, IntermediateOp, Intermediate};
 use crate::backend;
-use crate::backend::BackendError;
+use crate::backend::{Error, ErrorKind};
 
 struct Options {
     io_components: bool,
@@ -118,7 +118,7 @@ impl LogicSimulator {
         for &arg in args {
             match arg {
                 "--no-io-components" => options.io_components = false,
-                arg => return Err(BackendError::Custom(format!("unrecognized backend option '{}'", arg))),
+                arg => return Err(ErrorKind::Custom(format!("unrecognized backend option '{}'", arg)).into()),
             }
         }
 
@@ -132,16 +132,16 @@ impl LogicSimulator {
         };
 
         let f = File::create(output_path)
-            .map_err(|e| BackendError::Custom(format!("Unable to create output file: {}", e)))?;
+            .map_err(|e| Error::with_source(ErrorKind::Custom(format!("Unable to create output file: {}", e)), e))?;
         let writer = BufWriter::new(f);
 
         serde_json::to_writer(writer, &data)
-            .map_err(|e| BackendError::Custom(format!("Unable to write JSON: {}", e)))?;
+            .map_err(|e| Error::with_source(ErrorKind::Custom(format!("Unable to write JSON: {}", e)), e))?;
 
         Ok(())
     }
 
-    fn generate_circuits(blocks: &Vec<Rc<IntermediateBlock>>, options: &Options) -> Result<Vec<CircuitData>, BackendError> {
+    fn generate_circuits(blocks: &Vec<Rc<IntermediateBlock>>, options: &Options) -> Result<Vec<CircuitData>, Error> {
         let main_found = blocks.iter()
             .any(|block| {
                 let block: &IntermediateBlock = block.borrow();
@@ -149,7 +149,7 @@ impl LogicSimulator {
             });
 
         if !main_found {
-            return Err(BackendError::Custom("main block not defined".to_string()));
+            return Err(ErrorKind::Custom("main block not defined".to_string()).into());
         }
 
         let mut circuits = Vec::new();
@@ -162,7 +162,7 @@ impl LogicSimulator {
         Ok(circuits)
     }
 
-    fn generate_circuit(block: &IntermediateBlock, options: &Options, is_main: bool) -> Result<CircuitData, BackendError> {
+    fn generate_circuit(block: &IntermediateBlock, options: &Options, is_main: bool) -> Result<CircuitData, Error> {
         let io_signal_count = block.input_signal_count + block.output_signal_count;
 
         let mut circuit = Circuit {
@@ -231,7 +231,7 @@ impl LogicSimulator {
                 IntermediateOp::OR => ComponentType::OR,
                 IntermediateOp::XOR => ComponentType::XOR,
                 IntermediateOp::NOT => ComponentType::NOT,
-                _ => return Err(BackendError::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op))),
+                _ => return Err(ErrorKind::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op)).into()),
             };
 
             let mut component = Component {
@@ -254,7 +254,7 @@ impl LogicSimulator {
         Self::output_circuit(&circuit, &block.name, options, is_main)
     }
 
-    fn output_circuit(circuit: &Circuit, name: &str, options: &Options, is_main: bool) -> Result<CircuitData, BackendError> {
+    fn output_circuit(circuit: &Circuit, name: &str, options: &Options, is_main: bool) -> Result<CircuitData, Error> {
         let mut circuit_data = CircuitData {
             name: name.to_string(),
             label: name.to_string(),

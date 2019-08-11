@@ -1,20 +1,20 @@
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-
-use failure::Fail;
-
-use super::symbol::Symbol;
 use std::slice::{Iter, IterMut};
 
-#[derive(Debug, Fail)]
-pub enum SymbolTableError {
-    #[fail(display = "duplicate declaration of symbol '{}'", _0)]
-    SymbolExists(String),
+use derive_more::Display;
 
-    #[fail(display = "duplicate declaration of type '{}'", _0)]
-    TypeExists(String),
+use super::symbol::Symbol;
+use crate::shared::error;
+
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "duplicate declaration of symbol '{}'", _0)]
+    SymbolExists(String),
 }
+
+pub type Error = error::Error<ErrorKind>;
 
 #[derive(Debug)]
 pub struct SymbolTable {
@@ -30,9 +30,9 @@ impl SymbolTable {
         }
     }
 
-    pub fn add(&mut self, symbol: Symbol) -> Result<(), SymbolTableError> {
+    pub fn add(&mut self, symbol: Symbol) -> Result<(), Error> {
         match self.symbols_map.entry(symbol.name.clone()) {
-            Entry::Occupied(o) => Err(SymbolTableError::SymbolExists(o.key().to_string())),
+            Entry::Occupied(o) => Err(ErrorKind::SymbolExists(o.key().to_string()).into()),
             Entry::Vacant(v) => {
                 self.symbols.push(symbol);
 

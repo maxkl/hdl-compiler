@@ -1,22 +1,25 @@
 
 use std::rc::{Weak, Rc};
 
-use failure::Fail;
+use derive_more::Display;
+use crate::shared::error;
 
-#[derive(Debug, Fail)]
-pub enum IntermediateError {
-    #[fail(display = "attempt to add input signals after adding output signals, blocks or statements")]
-    NoMoreInputSignals(),
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "attempt to add input signals after adding output signals, blocks or statements")]
+    NoMoreInputSignals,
 
-    #[fail(display = "attempt to add output signals after adding blocks or statements")]
-    NoMoreOutputSignals(),
+    #[display(fmt = "attempt to add output signals after adding blocks or statements")]
+    NoMoreOutputSignals,
 
-    #[fail(display = "attempt to add block after adding statements")]
-    NoMoreBlocks(),
+    #[display(fmt = "attempt to add block after adding statements")]
+    NoMoreBlocks,
 
-    #[fail(display = "size {} is invalid for {} statement", _1, _0)]
+    #[display(fmt = "size {} is invalid for {} statement", _1, _0)]
     StatementSizeInvalid(String, u16),
 }
+
+pub type Error = error::Error<ErrorKind>;
 
 pub type Intermediate = Vec<Rc<IntermediateBlock>>;
 
@@ -73,9 +76,9 @@ impl IntermediateBlock {
         base_signal_id
     }
 
-    pub fn allocate_input_signals(&mut self, count: u32) -> Result<u32, IntermediateError> {
+    pub fn allocate_input_signals(&mut self, count: u32) -> Result<u32, Error> {
         if self.output_signal_count > 0 || !self.blocks.is_empty() || !self.statements.is_empty() {
-            return Err(IntermediateError::NoMoreInputSignals());
+            return Err(ErrorKind::NoMoreInputSignals.into());
         }
 
         let base_signal_id = self.next_signal_id;
@@ -85,9 +88,9 @@ impl IntermediateBlock {
         Ok(base_signal_id)
     }
 
-    pub fn allocate_output_signals(&mut self, count: u32) -> Result<u32, IntermediateError> {
+    pub fn allocate_output_signals(&mut self, count: u32) -> Result<u32, Error> {
         if !self.blocks.is_empty() || !self.statements.is_empty() {
-            return Err(IntermediateError::NoMoreOutputSignals());
+            return Err(ErrorKind::NoMoreOutputSignals.into());
         }
 
         let base_signal_id = self.next_signal_id;
@@ -97,9 +100,9 @@ impl IntermediateBlock {
         Ok(base_signal_id)
     }
 
-    pub fn add_block(&mut self, block_weak: Weak<IntermediateBlock>) -> Result<u32, IntermediateError> {
+    pub fn add_block(&mut self, block_weak: Weak<IntermediateBlock>) -> Result<u32, Error> {
         if !self.statements.is_empty() {
-            return Err(IntermediateError::NoMoreBlocks());
+            return Err(ErrorKind::NoMoreBlocks.into());
         }
 
         let block = block_weak.upgrade().unwrap();
@@ -118,11 +121,11 @@ impl IntermediateBlock {
 }
 
 impl IntermediateStatement {
-    pub fn new(op: IntermediateOp, size: u16) -> Result<IntermediateStatement, IntermediateError> {
+    pub fn new(op: IntermediateOp, size: u16) -> Result<IntermediateStatement, Error> {
         let (input_count, output_count): (usize, usize) = match op {
             IntermediateOp::Connect => {
                 if size != 1 {
-                    return Err(IntermediateError::StatementSizeInvalid("Connect".to_string(), size));
+                    return Err(ErrorKind::StatementSizeInvalid("Connect".to_string(), size).into());
                 }
 
                 (1, 1)
@@ -131,7 +134,7 @@ impl IntermediateStatement {
             IntermediateOp::AND | IntermediateOp::OR | IntermediateOp::XOR => (size as usize, 1),
             IntermediateOp::NOT => {
                 if size != 1 {
-                    return Err(IntermediateError::StatementSizeInvalid("NOT".to_string(), size));
+                    return Err(ErrorKind::StatementSizeInvalid("NOT".to_string(), size).into());
                 }
 
                 (1, 1)

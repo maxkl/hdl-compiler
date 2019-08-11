@@ -1,28 +1,30 @@
 
 use std::rc::Rc;
 use std::cell::RefCell;
-
-use failure::Fail;
-
-use super::lexer::{ILexer, TokenKind, LexerError, Token, Location, TokenData};
-use super::ast::*;
 use std::collections::HashMap;
 
-#[derive(Debug, Fail)]
-pub enum ParserError {
-    #[fail(display = "{}: expected {} but got {}", _0, _1, _2)]
+use derive_more::Display;
+
+use crate::frontend::lexer;
+use super::lexer::{ILexer, TokenKind, Token, Location, TokenData};
+use super::ast::*;
+use crate::shared::error;
+
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "expected {} but got {} at {}", _1, _2, _0)]
     UnexpectedToken(Location, TokenKind, TokenKind),
-
-    #[fail(display = "{}: {}", _0, _1)]
-    Custom(Location, String),
-
-    #[fail(display = "{}", _0)]
-    Lexer(#[cause] LexerError),
+    #[display(fmt = "expected {} but got {} at {}", _1, _2, _0)]
+    UnexpectedToken2(Location, String, TokenKind),
+    #[display(fmt = "failed to read next token")]
+    Lexer,
 }
 
-impl From<LexerError> for ParserError {
-    fn from(err: LexerError) -> Self {
-        ParserError::Lexer(err)
+pub type Error = error::Error<ErrorKind>;
+
+impl From<lexer::Error> for Error {
+    fn from(err: lexer::Error) -> Self {
+        Error::with_source(ErrorKind::Lexer, err)
     }
 }
 
@@ -32,7 +34,7 @@ pub struct Parser<L: ILexer> {
 }
 
 impl<L: ILexer> Parser<L> {
-    pub fn new(mut lexer: L) -> Result<Parser<L>, ParserError> {
+    pub fn new(mut lexer: L) -> Result<Parser<L>, Error> {
         // Read first lookahead token
         let lookahead = lexer.get_token()?;
 
@@ -42,7 +44,7 @@ impl<L: ILexer> Parser<L> {
         })
     }
 
-    fn match_token(&mut self, expected_kind: TokenKind) -> Result<Box<Token>, ParserError> {
+    fn match_token(&mut self, expected_kind: TokenKind) -> Result<Box<Token>, Error> {
         if self.lookahead.kind == expected_kind {
             // Read next lookahead token
             let mut token = Box::new(self.lexer.get_token()?);
@@ -51,11 +53,11 @@ impl<L: ILexer> Parser<L> {
             // `token` now holds the old lookahead token which is the token we just matched against
             Ok(token)
         } else {
-            Err(ParserError::UnexpectedToken(self.lookahead.location, expected_kind, self.lookahead.kind))
+            Err(ErrorKind::UnexpectedToken(self.lookahead.location, expected_kind, self.lookahead.kind).into())
         }
     }
 
-    fn parse_identifier(&mut self) -> Result<Box<IdentifierNode>, ParserError> {
+    fn parse_identifier(&mut self) -> Result<Box<IdentifierNode>, Error> {
         let identifier = self.match_token(TokenKind::Identifier)?;
 
         if let TokenData::Identifier(name) = identifier.data {
@@ -67,7 +69,7 @@ impl<L: ILexer> Parser<L> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<Box<NumberNode>, ParserError> {
+    fn parse_number(&mut self) -> Result<Box<NumberNode>, Error> {
         let number = self.match_token(TokenKind::Number)?;
 
         if let TokenData::Number { value, width } = number.data {
@@ -114,7 +116,7 @@ impl<L: ILexer> Parser<L> {
     /// primary_expr = '(', expr, ')' | behaviour_identifier | number ;
     /// ```
 
-    pub fn parse(&mut self) -> Result<Box<RootNode>, ParserError> {
+    pub fn parse(&mut self) -> Result<Box<RootNode>, Error> {
         let blocks = self.parse_blocks()?;
 
         // Make sure there are no tokens left over
@@ -126,7 +128,7 @@ impl<L: ILexer> Parser<L> {
         }))
     }
 
-    fn parse_blocks<'a>(&mut self) -> Result<Vec<Rc<RefCell<BlockNode>>>, ParserError> {
+    fn parse_blocks<'a>(&mut self) -> Result<Vec<Rc<RefCell<BlockNode>>>, Error> {
         let mut blocks = Vec::<Rc<RefCell<BlockNode>>>::new();
 
         while self.lookahead.kind == TokenKind::BlockKeyword {
@@ -138,7 +140,7 @@ impl<L: ILexer> Parser<L> {
         Ok(blocks)
     }
 
-    fn parse_block<'a>(&mut self) -> Result<Rc<RefCell<BlockNode>>, ParserError> {
+    fn parse_block<'a>(&mut self) -> Result<Rc<RefCell<BlockNode>>, Error> {
         self.match_token(TokenKind::BlockKeyword)?;
 
         let name = self.parse_identifier()?;
@@ -160,7 +162,7 @@ impl<L: ILexer> Parser<L> {
         })))
     }
 
-    fn parse_declarations(&mut self) -> Result<Vec<Box<DeclarationNode>>, ParserError> {
+    fn parse_declarations(&mut self) -> Result<Vec<Box<DeclarationNode>>, Error> {
         let mut declarations = Vec::<Box<DeclarationNode>>::new();
 
         while self.lookahead.kind == TokenKind::InKeyword
@@ -175,7 +177,7 @@ impl<L: ILexer> Parser<L> {
         Ok(declarations)
     }
 
-    fn parse_declaration(&mut self) -> Result<Box<DeclarationNode>, ParserError> {
+    fn parse_declaration(&mut self) -> Result<Box<DeclarationNode>, Error> {
         let typ = self.parse_type()?;
 
         let names = self.parse_identifier_list()?;
@@ -188,7 +190,7 @@ impl<L: ILexer> Parser<L> {
         }))
     }
 
-    fn parse_type(&mut self) -> Result<Box<TypeNode>, ParserError> {
+    fn parse_type(&mut self) -> Result<Box<TypeNode>, Error> {
         let specifier = self.parse_type_specifier()?;
 
         let width = if self.lookahead.kind == TokenKind::LeftBracket {
@@ -209,7 +211,7 @@ impl<L: ILexer> Parser<L> {
         }))
     }
 
-    fn parse_type_specifier(&mut self) -> Result<Box<TypeSpecifierNode>, ParserError> {
+    fn parse_type_specifier(&mut self) -> Result<Box<TypeSpecifierNode>, Error> {
         match self.lookahead.kind {
             TokenKind::InKeyword => {
                 self.match_token(TokenKind::InKeyword)?;
@@ -228,11 +230,11 @@ impl<L: ILexer> Parser<L> {
 
                 Ok(Box::new(TypeSpecifierNode::Block(name)))
             },
-            kind => Err(ParserError::Custom(self.lookahead.location, format!("expected type but got {}", kind)))
+            kind => Err(ErrorKind::UnexpectedToken2(self.lookahead.location, "type".to_string(), kind).into())
         }
     }
 
-    fn parse_identifier_list(&mut self) -> Result<Vec<Box<IdentifierNode>>, ParserError> {
+    fn parse_identifier_list(&mut self) -> Result<Vec<Box<IdentifierNode>>, Error> {
         let mut identifiers = Vec::<Box<IdentifierNode>>::new();
 
         identifiers.push(self.parse_identifier()?);
@@ -246,7 +248,7 @@ impl<L: ILexer> Parser<L> {
         Ok(identifiers)
     }
 
-    fn parse_behaviour_statements(&mut self) -> Result<Vec<Box<BehaviourStatementNode>>, ParserError> {
+    fn parse_behaviour_statements(&mut self) -> Result<Vec<Box<BehaviourStatementNode>>, Error> {
         let mut behaviour_statements = Vec::<Box<BehaviourStatementNode>>::new();
 
         while self.lookahead.kind == TokenKind::Identifier {
@@ -258,7 +260,7 @@ impl<L: ILexer> Parser<L> {
         Ok(behaviour_statements)
     }
 
-    fn parse_behaviour_statement(&mut self) -> Result<Box<BehaviourStatementNode>, ParserError> {
+    fn parse_behaviour_statement(&mut self) -> Result<Box<BehaviourStatementNode>, Error> {
         let target = self.parse_behaviour_identifier()?;
 
         self.match_token(TokenKind::Equals)?;
@@ -274,7 +276,7 @@ impl<L: ILexer> Parser<L> {
         }))
     }
 
-    fn parse_behaviour_identifier(&mut self) -> Result<Box<BehaviourIdentifierNode>, ParserError> {
+    fn parse_behaviour_identifier(&mut self) -> Result<Box<BehaviourIdentifierNode>, Error> {
         let name = self.parse_identifier()?;
 
         let property = if self.lookahead.kind == TokenKind::Dot {
@@ -298,7 +300,7 @@ impl<L: ILexer> Parser<L> {
         }))
     }
 
-    fn parse_subscript(&mut self) -> Result<Box<SubscriptNode>, ParserError> {
+    fn parse_subscript(&mut self) -> Result<Box<SubscriptNode>, Error> {
         self.match_token(TokenKind::LeftBracket)?;
 
         let first = self.parse_number()?;
@@ -326,11 +328,11 @@ impl<L: ILexer> Parser<L> {
         }))
     }
 
-    fn parse_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+    fn parse_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
         self.parse_bitwise_or_expression()
     }
 
-    fn parse_bitwise_or_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+    fn parse_bitwise_or_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
         let mut left = self.parse_bitwise_xor_expression()?;
 
         while self.lookahead.kind == TokenKind::OR {
@@ -347,7 +349,7 @@ impl<L: ILexer> Parser<L> {
         Ok(left)
     }
 
-    fn parse_bitwise_xor_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+    fn parse_bitwise_xor_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
         let mut left = self.parse_bitwise_and_expression()?;
 
         while self.lookahead.kind == TokenKind::XOR {
@@ -364,7 +366,7 @@ impl<L: ILexer> Parser<L> {
         Ok(left)
     }
 
-    fn parse_bitwise_and_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+    fn parse_bitwise_and_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
         let mut left = self.parse_unary_expression()?;
 
         while self.lookahead.kind == TokenKind::AND {
@@ -381,7 +383,7 @@ impl<L: ILexer> Parser<L> {
         Ok(left)
     }
 
-    fn parse_unary_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+    fn parse_unary_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
         match self.lookahead.kind {
             TokenKind::NOT => {
                 self.match_token(TokenKind::NOT)?;
@@ -397,7 +399,7 @@ impl<L: ILexer> Parser<L> {
         }
     }
 
-    fn parse_primary_expression(&mut self) -> Result<Box<ExpressionNode>, ParserError> {
+    fn parse_primary_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
         match self.lookahead.kind {
             TokenKind::LeftParenthesis => {
                 self.match_token(TokenKind::LeftParenthesis)?;
@@ -424,7 +426,7 @@ impl<L: ILexer> Parser<L> {
                     typ: None,
                 }))
             },
-            kind => Err(ParserError::Custom(self.lookahead.location, format!("expected expression but got {}", kind)))
+            kind => Err(ErrorKind::UnexpectedToken2(self.lookahead.location, "expression".to_string(), kind).into())
         }
     }
 }

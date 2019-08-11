@@ -3,12 +3,16 @@ pub mod logic_simulator;
 
 use std::result;
 
-use failure::Fail;
+use derive_more::Display;
 
-#[derive(Debug, Fail)]
-pub enum BackendError {
-    #[fail(display = "{}", _0)]
+use crate::shared::error;
+
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "{}", _0)]
     Custom(String),
 }
 
-pub type Result = result::Result<(), BackendError>;
+type Error = error::Error<ErrorKind>;
+
+pub type Result = result::Result<(), Error>;

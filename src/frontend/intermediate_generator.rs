@@ -3,23 +3,26 @@ use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::borrow::Borrow;
 
-use failure::Fail;
+use derive_more::Display;
 
-use crate::shared::intermediate::{IntermediateBlock, IntermediateError, IntermediateStatement, IntermediateOp, Intermediate};
+use crate::shared::intermediate::{IntermediateBlock, IntermediateStatement, IntermediateOp, Intermediate};
 use super::ast::*;
 use super::symbol::SymbolTypeSpecifier;
 use crate::frontend::symbol_table::SymbolTable;
 use crate::frontend::expression_type::ExpressionType;
+use crate::shared::{error, intermediate};
 
-#[derive(Debug, Fail)]
-pub enum IntermediateGeneratorError {
-    #[fail(display = "{}", _0)]
-    Intermediate(#[cause] IntermediateError),
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "Intermediate")]
+    Intermediate,
 }
 
-impl From<IntermediateError> for IntermediateGeneratorError {
-    fn from(err: IntermediateError) -> Self {
-        IntermediateGeneratorError::Intermediate(err)
+pub type Error = error::Error<ErrorKind>;
+
+impl From<intermediate::Error> for Error {
+    fn from(err: intermediate::Error) -> Self {
+        Error::with_source(ErrorKind::Intermediate, err)
     }
 }
 
@@ -28,17 +31,17 @@ pub struct IntermediateGenerator {
 }
 
 impl IntermediateGenerator {
-    pub fn generate(root: &RootNode) -> Result<Intermediate, IntermediateGeneratorError> {
+    pub fn generate(root: &RootNode) -> Result<Intermediate, Error> {
         Self::generate_blocks(root)
     }
 
-    fn generate_blocks(root: &RootNode) -> Result<Vec<Rc<IntermediateBlock>>, IntermediateGeneratorError> {
+    fn generate_blocks(root: &RootNode) -> Result<Vec<Rc<IntermediateBlock>>, Error> {
         root.blocks.iter()
             .map(|block| Self::generate_block(&mut RefCell::borrow_mut(block)))
             .collect()
     }
 
-    fn generate_block(block: &mut BlockNode) -> Result<Rc<IntermediateBlock>, IntermediateGeneratorError> {
+    fn generate_block(block: &mut BlockNode) -> Result<Rc<IntermediateBlock>, Error> {
         let symbol_table_refcell = block.symbol_table.as_ref().unwrap();
         let mut symbol_table = RefCell::borrow_mut(symbol_table_refcell);
 
@@ -76,7 +79,7 @@ impl IntermediateGenerator {
         Ok(intermediate_block_rc)
     }
 
-    fn generate_behaviour_statement(behaviour_statement: &BehaviourStatementNode, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<(), IntermediateGeneratorError> {
+    fn generate_behaviour_statement(behaviour_statement: &BehaviourStatementNode, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<(), Error> {
         let target_signal_id = Self::generate_behaviour_identifier(&behaviour_statement.target, symbol_table)?;
 
         let source_signal_id = Self::generate_expression(&behaviour_statement.source, symbol_table, intermediate_block)?;
@@ -94,7 +97,7 @@ impl IntermediateGenerator {
         Ok(())
     }
 
-    fn generate_behaviour_identifier(behaviour_identifier: &BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<u32, IntermediateGeneratorError> {
+    fn generate_behaviour_identifier(behaviour_identifier: &BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<u32, Error> {
         let symbol = symbol_table.find(&behaviour_identifier.name.value).unwrap();
         let symbol_type = &symbol.typ;
 
@@ -123,7 +126,7 @@ impl IntermediateGenerator {
         Ok(signal_id)
     }
 
-    fn generate_expression(expression: &ExpressionNode, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<u32, IntermediateGeneratorError> {
+    fn generate_expression(expression: &ExpressionNode, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<u32, Error> {
         match &expression.data {
             ExpressionNodeData::Binary(op, left, right) => Self::generate_binary_expression(*op, left, right, expression.typ.as_ref().unwrap(), symbol_table, intermediate_block),
             ExpressionNodeData::Unary(op, operand) => Self::generate_unary_expression(*op, operand, expression.typ.as_ref().unwrap(), symbol_table, intermediate_block),
@@ -132,7 +135,7 @@ impl IntermediateGenerator {
         }
     }
 
-    fn generate_constant(value: u64, width: u64, intermediate_block: &mut IntermediateBlock) -> Result<u32, IntermediateGeneratorError> {
+    fn generate_constant(value: u64, width: u64, intermediate_block: &mut IntermediateBlock) -> Result<u32, Error> {
         let output_signal_id = intermediate_block.allocate_signals(width as u32);
 
         for i in 0..width {
@@ -145,7 +148,7 @@ impl IntermediateGenerator {
         Ok(output_signal_id)
     }
 
-    fn generate_unary_expression(op: UnaryOp, operand: &ExpressionNode, expression_type: &ExpressionType, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<u32, IntermediateGeneratorError> {
+    fn generate_unary_expression(op: UnaryOp, operand: &ExpressionNode, expression_type: &ExpressionType, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<u32, Error> {
         let expression_width = expression_type.width;
 
         let input_signal_id = Self::generate_expression(operand, symbol_table, intermediate_block)?;
@@ -166,7 +169,7 @@ impl IntermediateGenerator {
         Ok(output_signal_id)
     }
 
-    fn generate_binary_expression(op: BinaryOp, left: &ExpressionNode, right: &ExpressionNode, expression_type: &ExpressionType, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<u32, IntermediateGeneratorError> {
+    fn generate_binary_expression(op: BinaryOp, left: &ExpressionNode, right: &ExpressionNode, expression_type: &ExpressionType, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<u32, Error> {
         let expression_width = expression_type.width;
 
         let input_signal_id_left = Self::generate_expression(left, symbol_table, intermediate_block)?;

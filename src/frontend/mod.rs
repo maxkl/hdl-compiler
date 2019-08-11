@@ -14,45 +14,30 @@ use std::{io, result};
 use std::io::Read;
 use std::fs::File;
 
-use failure::Fail;
+use derive_more::Display;
 
 use crate::frontend::lexer::Lexer;
-use crate::frontend::parser::{Parser, ParserError};
-use crate::frontend::semantic_analyzer::{SemanticAnalyzer, SemanticAnalyzerError};
-use crate::frontend::intermediate_generator::{IntermediateGenerator, IntermediateGeneratorError};
+use crate::frontend::parser::Parser;
+use crate::frontend::semantic_analyzer::SemanticAnalyzer;
+use crate::frontend::intermediate_generator::IntermediateGenerator;
 use crate::shared::intermediate::Intermediate;
+use crate::shared::error;
 
-pub type Result = result::Result<Intermediate, FrontendError>;
+pub type Result = result::Result<Intermediate, Error>;
 
-#[derive(Debug, Fail)]
-pub enum FrontendError {
-    #[fail(display = "{}", _0)]
-    Parser(#[cause] ParserError),
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "failed to parse input file")]
+    Parser,
 
-    #[fail(display = "{}", _0)]
-    SemanticAnalyzer(#[cause] SemanticAnalyzerError),
+    #[display(fmt = "semantic analysis failed")]
+    SemanticAnalyzer,
 
-    #[fail(display = "{}", _0)]
-    IntermediateGenerator(#[cause] IntermediateGeneratorError),
+    #[display(fmt = "failed to generate intermediate code")]
+    IntermediateGenerator,
 }
 
-impl From<ParserError> for FrontendError {
-    fn from(err: ParserError) -> Self {
-        FrontendError::Parser(err)
-    }
-}
-
-impl From<SemanticAnalyzerError> for FrontendError {
-    fn from(err: SemanticAnalyzerError) -> Self {
-        FrontendError::SemanticAnalyzer(err)
-    }
-}
-
-impl From<IntermediateGeneratorError> for FrontendError {
-    fn from(err: IntermediateGeneratorError) -> Self {
-        FrontendError::IntermediateGenerator(err)
-    }
-}
+type Error = error::Error<ErrorKind>;
 
 /// Wrapper (around stdin or a file) that implements `Read`
 pub struct Input<'a> {
@@ -82,13 +67,17 @@ impl<'a> Input<'a> {
 pub fn compile(source: Input) -> Result {
     let lexer = Lexer::new(source);
 
-    let mut parser = Parser::new(lexer)?;
+    let mut parser = Parser::new(lexer)
+        .map_err(|err| Error::with_source(ErrorKind::Parser, err))?;
 
-    let mut root = parser.parse()?;
+    let mut root = parser.parse()
+        .map_err(|err| Error::with_source(ErrorKind::Parser, err))?;
 
-    SemanticAnalyzer::analyze(&mut root)?;
+    SemanticAnalyzer::analyze(&mut root)
+        .map_err(|err| Error::with_source(ErrorKind::SemanticAnalyzer, err))?;
 
-    let intermediate = IntermediateGenerator::generate(&root)?;
+    let intermediate = IntermediateGenerator::generate(&root)
+        .map_err(|err| Error::with_source(ErrorKind::IntermediateGenerator, err))?;
 
     Ok(intermediate)
 }

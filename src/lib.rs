@@ -9,11 +9,12 @@ use std::fs::File;
 use std::path::Path;
 use std::ffi::OsStr;
 
-use failure::{Error, format_err};
 use clap::{App, Arg};
+use derive_more::Display;
 
 use crate::shared::intermediate::Intermediate;
 use crate::linker::Linker;
+use crate::shared::error;
 
 const FRONTENDS: [(&str, fn(frontend::Input) -> frontend::Result); 1] = [
     ("hdl", frontend::compile),
@@ -27,6 +28,28 @@ const INPUT_FILE_TYPES: [(&str, &str); 2] = [
     ("hdl", "hdl"),
     ("hdli", "intermediate"),
 ];
+
+#[derive(Debug, Display)]
+pub enum ErrorKind {
+    #[display(fmt = "failed to compile {}", _0)]
+    Compile(String),
+    #[display(fmt = "failed to link intermediate files")]
+    Linker,
+    #[display(fmt = "error in backend")]
+    Backend,
+    #[display(fmt = "failed to open file {}", _0)]
+    FileOpen(String),
+    #[display(fmt = "-o specified for multiple output files")]
+    MultipleOutputsFileSpecified,
+    #[display(fmt = "reading from standard input requires explicit file type")]
+    StdinFileType,
+    #[display(fmt = "{}: file format not recognized", _0)]
+    FileFormatNotRecognized(String),
+    #[display(fmt = "feature not implemented yet")]
+    NotImplemented,
+}
+
+pub type Error = error::Error<ErrorKind>;
 
 pub fn run(args: Vec<String>) -> Result<(), Error> {
     let frontend_names = {
@@ -143,11 +166,11 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     if dump_intermediate {
         // TODO: read and dump intermediate files
-        return Err(format_err!("not implemented yet"));
+        return Err(ErrorKind::NotImplemented.into());
     }
 
     if input_files.len() > 0 && frontend_only && output_file.is_some() {
-        return Err(format_err!("-o specified for multiple output files"));
+        return Err(ErrorKind::MultipleOutputsFileSpecified.into());
     }
 
     let mut intermediate_files = Vec::new();
@@ -155,7 +178,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     for input_file in input_files {
         let frontend_name = if input_file.1 == "auto" {
             if input_file.0 == "-" {
-                return Err(format_err!("reading from stdin requires explicit file type"));
+                return Err(ErrorKind::StdinFileType.into());
             }
 
             Path::new(input_file.0)
@@ -167,7 +190,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
                     } else {
                         None
                     }))
-                .ok_or_else(|| format_err!("could not determine frontend for file '{}'", input_file.0))?
+                .ok_or_else(|| ErrorKind::FileFormatNotRecognized(input_file.0.to_string()))?
         } else {
             input_file.1
         };
@@ -183,32 +206,43 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
             stdin = io::stdin();
             frontend::Input::from_stdin(&stdin)
         } else {
-            f = File::open(input_file.0)?;
+            f = File::open(input_file.0)
+                .map_err(|err| Error::with_source(ErrorKind::FileOpen(input_file.0.to_string()), err))?;
             frontend::Input::from_file(&f)
         };
 
-        let intermediate = frontend_fn(input)?;
+        let intermediate = frontend_fn(input)
+            .map_err(|err| {
+                let file_name = if input_file.0 == "-" {
+                    "standard input".to_string()
+                } else {
+                    input_file.0.to_string()
+                };
+                Error::with_source(ErrorKind::Compile(file_name), err)
+            })?;
 
         if frontend_only {
             // TODO: output intermediate file
-            return Err(format_err!("not implemented yet"));
+            return Err(ErrorKind::NotImplemented.into());
         } else {
             intermediate_files.push(intermediate);
         }
     }
 
     if !frontend_only {
-        let linked_intermediate = Linker::link(&intermediate_files)?;
+        let linked_intermediate = Linker::link(&intermediate_files)
+            .map_err(|err| Error::with_source(ErrorKind::Linker, err))?;
 
         if link_only {
             // TODO: output intermediate file
-            return Err(format_err!("not implemented yet"));
+            return Err(ErrorKind::NotImplemented.into());
         } else {
             let backend_fn = BACKENDS.iter()
                 .find(|backend| backend.0 == backend_name)
                 .unwrap().1;
 
-            backend_fn(output_file, &linked_intermediate, backend_args.as_slice())?;
+            backend_fn(output_file, &linked_intermediate, backend_args.as_slice())
+                .map_err(|err| Error::with_source(ErrorKind::Backend, err))?;
         }
     }
 
