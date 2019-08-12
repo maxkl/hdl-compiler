@@ -19,7 +19,13 @@ pub struct NumberNode {
 }
 
 #[derive(Debug)]
+pub struct StringNode {
+    pub value: String
+}
+
+#[derive(Debug)]
 pub struct RootNode {
+    pub includes: Vec<Box<IncludeNode>>,
     pub blocks: Vec<Rc<RefCell<BlockNode>>>,
     pub blocks_map: HashMap<String, usize>,
 }
@@ -29,6 +35,11 @@ impl RootNode {
         self.blocks_map.get(name)
             .map(|&index| self.blocks.get(index).unwrap())
     }
+}
+
+#[derive(Debug)]
+pub struct IncludeNode {
+    pub name: Box<StringNode>,
 }
 
 #[derive(Debug)]
