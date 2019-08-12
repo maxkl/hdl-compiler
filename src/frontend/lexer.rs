@@ -99,6 +99,7 @@ pub enum TokenKind {
     InKeyword,
     OutKeyword,
     BlockKeyword,
+    IncludeKeyword,
 }
 
 impl Display for TokenKind {
@@ -249,6 +250,7 @@ impl<R: Read> ILexer for Lexer<R> {
                         "in" => Ok(Token::new(TokenKind::InKeyword, token_location)),
                         "out" => Ok(Token::new(TokenKind::OutKeyword, token_location)),
                         "block" => Ok(Token::new(TokenKind::BlockKeyword, token_location)),
+                        "include" => Ok(Token::new(TokenKind::IncludeKeyword, token_location)),
                         _ => Ok(Token::new_with_data(TokenKind::Identifier, TokenData::Identifier(s), token_location))
                     }
                 } else if x.is_numeric() {
@@ -610,6 +612,7 @@ hello
 in
 out
 block
+include
 ";
 
         let expected_tokens = vec![
@@ -633,7 +636,8 @@ block
             Token::new(TokenKind::InKeyword, Location::new(18, 1)),
             Token::new(TokenKind::OutKeyword, Location::new(19, 1)),
             Token::new(TokenKind::BlockKeyword, Location::new(20, 1)),
-            Token::new(TokenKind::EndOfFile, Location::new(21, 0)),
+            Token::new(TokenKind::IncludeKeyword, Location::new(21, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(22, 0)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);
