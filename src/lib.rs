@@ -4,8 +4,6 @@ mod frontend;
 mod linker;
 mod backend;
 
-use std::io;
-use std::fs::File;
 use std::path::Path;
 use std::ffi::OsStr;
 
@@ -16,7 +14,7 @@ use crate::shared::intermediate::Intermediate;
 use crate::linker::Linker;
 use crate::shared::error;
 
-const FRONTENDS: [(&str, fn(frontend::Input) -> frontend::Result); 1] = [
+const FRONTENDS: [(&str, fn(&Path) -> frontend::Result); 1] = [
     ("hdl", frontend::compile),
 ];
 
@@ -37,12 +35,8 @@ pub enum ErrorKind {
     Linker,
     #[display(fmt = "error in backend")]
     Backend,
-    #[display(fmt = "failed to open file {}", _0)]
-    FileOpen(String),
     #[display(fmt = "-o specified for multiple output files")]
     MultipleOutputsFileSpecified,
-    #[display(fmt = "reading from standard input requires explicit file type")]
-    StdinFileType,
     #[display(fmt = "{}: file format not recognized", _0)]
     FileFormatNotRecognized(String),
     #[display(fmt = "feature not implemented yet")]
@@ -176,13 +170,10 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     let mut intermediate_files = Vec::new();
 
     for input_file in input_files {
-        let frontend_name = if input_file.1 == "auto" {
-            if input_file.0 == "-" {
-                return Err(ErrorKind::StdinFileType.into());
-            }
+        let input_path = Path::new(input_file.0);
 
-            Path::new(input_file.0)
-                .extension()
+        let frontend_name = if input_file.1 == "auto" {
+            input_path.extension()
                 .and_then(OsStr::to_str)
                 .and_then(|ext| INPUT_FILE_TYPES.iter()
                     .find_map(|file_type| if file_type.0 == ext {
@@ -199,27 +190,8 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
             .find(|frontend| frontend.0 == frontend_name)
             .unwrap().1;
 
-        let stdin;
-        let f;
-
-        let input = if input_file.0 == "-" {
-            stdin = io::stdin();
-            frontend::Input::from_stdin(&stdin)
-        } else {
-            f = File::open(input_file.0)
-                .map_err(|err| Error::with_source(ErrorKind::FileOpen(input_file.0.to_string()), err))?;
-            frontend::Input::from_file(&f)
-        };
-
-        let intermediate = frontend_fn(input)
-            .map_err(|err| {
-                let file_name = if input_file.0 == "-" {
-                    "standard input".to_string()
-                } else {
-                    input_file.0.to_string()
-                };
-                Error::with_source(ErrorKind::Compile(file_name), err)
-            })?;
+        let intermediate = frontend_fn(input_path)
+            .map_err(|err| Error::with_source(ErrorKind::Compile(input_path.to_str().unwrap().to_string()), err))?;
 
         if frontend_only {
             // TODO: output intermediate file

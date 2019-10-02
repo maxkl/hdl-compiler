@@ -10,8 +10,8 @@ pub mod expression_type;
 pub mod semantic_analyzer;
 pub mod intermediate_generator;
 
-use std::{io, result};
-use std::io::Read;
+use std::result;
+use std::path::Path;
 use std::fs::File;
 
 use derive_more::Display;
@@ -27,6 +27,9 @@ pub type Result = result::Result<Intermediate, Error>;
 
 #[derive(Debug, Display)]
 pub enum ErrorKind {
+    #[display(fmt = "failed to open file {}", _0)]
+    FileOpen(String),
+
     #[display(fmt = "failed to parse input file")]
     Parser,
 
@@ -39,33 +42,11 @@ pub enum ErrorKind {
 
 type Error = error::Error<ErrorKind>;
 
-/// Wrapper (around stdin or a file) that implements `Read`
-pub struct Input<'a> {
-    source: Box<dyn Read + 'a>,
-}
+pub fn compile(path: &Path) -> Result {
+    let f = File::open(path)
+        .map_err(|err| Error::with_source(ErrorKind::FileOpen(path.to_str().unwrap().to_string()), err))?;
 
-impl<'a> Read for Input<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.source.read(buf)
-    }
-}
-
-impl<'a> Input<'a> {
-    pub fn from_stdin(stdin: &'a io::Stdin) -> Input<'a> {
-        Input {
-            source: Box::new(stdin.lock()),
-        }
-    }
-
-    pub fn from_file(f: &'a File) -> Input<'a> {
-        Input {
-            source: Box::new(f),
-        }
-    }
-}
-
-pub fn compile(source: Input) -> Result {
-    let lexer = Lexer::new(source);
+    let lexer = Lexer::new(f);
 
     let mut parser = Parser::new(lexer)
         .map_err(|err| Error::with_source(ErrorKind::Parser, err))?;
