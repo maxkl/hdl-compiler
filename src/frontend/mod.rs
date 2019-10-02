@@ -13,6 +13,7 @@ pub mod intermediate_generator;
 use std::result;
 use std::path::Path;
 use std::fs::File;
+use std::io::BufReader;
 
 use derive_more::Display;
 
@@ -45,8 +46,9 @@ type Error = error::Error<ErrorKind>;
 pub fn compile(path: &Path) -> Result {
     let f = File::open(path)
         .map_err(|err| Error::with_source(ErrorKind::FileOpen(path.to_str().unwrap().to_string()), err))?;
+    let reader = BufReader::new(f);
 
-    let lexer = Lexer::new(f);
+    let lexer = Lexer::new(reader);
 
     let mut parser = Parser::new(lexer)
         .map_err(|err| Error::with_source(ErrorKind::Parser, err))?;
