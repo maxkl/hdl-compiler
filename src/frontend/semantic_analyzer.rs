@@ -32,6 +32,9 @@ pub enum ErrorKind {
     #[display(fmt = "missing clock input for sequential block")]
     MissingClock,
 
+    #[display(fmt = "clock input has width greater than one")]
+    ClockTooWide,
+
     #[display(fmt = "signal(s) declared with invalid width of 0")]
     ZeroWidth,
 
@@ -188,6 +191,10 @@ impl SemanticAnalyzer {
         } else {
             1
         };
+
+        if matches!(type_specifier, SymbolTypeSpecifier::Clock(_)) && width > 1 {
+            return Err(ErrorKind::ClockTooWide.into());
+        }
 
         Ok(SymbolType {
             specifier: type_specifier,
