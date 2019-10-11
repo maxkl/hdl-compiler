@@ -314,7 +314,7 @@ impl SemanticAnalyzer {
         Ok(expression_type)
     }
 
-    fn analyze_unary_expression(op: UnaryOp, operand: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
+    fn analyze_unary_expression(_op: UnaryOp, operand: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
         let expression_type = Self::analyze_expression(operand, symbol_table)?;
 
         if expression_type.access_type != AccessType::Read {
@@ -324,7 +324,7 @@ impl SemanticAnalyzer {
         Ok(expression_type)
     }
 
-    fn analyze_binary_expression(op: BinaryOp, left: &mut ExpressionNode, right: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
+    fn analyze_binary_expression(_op: BinaryOp, left: &mut ExpressionNode, right: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
         let expression_type_left = Self::analyze_expression(left, symbol_table)?;
 
         if expression_type_left.access_type != AccessType::Read {

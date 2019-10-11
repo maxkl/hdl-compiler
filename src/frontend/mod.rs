@@ -60,10 +60,8 @@ fn make_absolute<P1: AsRef<Path>, P2: AsRef<Path>>(relative: P1, root: P2) -> Pa
     }
 }
 
-fn compile_subtree(path: &Path, is_root: bool, cache: &mut Cache) -> result::Result<(), Error> {
+fn compile_subtree(path: &Path, cache: &mut Cache) -> result::Result<(), Error> {
     assert!(path.is_absolute());
-
-    // TODO: do something with is_root
 
     let directory = path.parent().unwrap();
 
@@ -97,7 +95,7 @@ fn compile_subtree(path: &Path, is_root: bool, cache: &mut Cache) -> result::Res
                 return Err(Error::new(ErrorKind::CyclicInclude));
             }
         } else {
-            compile_subtree(&full_path, false, cache)?;
+            compile_subtree(&full_path, cache)?;
         }
     }
 
@@ -120,7 +118,7 @@ pub fn compile(path: &Path) -> Result {
 
     let full_path = make_absolute(path, env::current_dir().unwrap());
 
-    compile_subtree(&full_path, true, &mut cache)?;
+    compile_subtree(&full_path, &mut cache)?;
 
     let all_intermediate = cache.collect_intermediate();
 
