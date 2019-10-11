@@ -100,11 +100,15 @@ pub enum TokenKind {
     LeftParenthesis,
     RightParenthesis,
 
+    IncludeKeyword,
+    BlockKeyword,
+    SequentialKeyword,
+    ClockKeyword,
+    FallingEdgeKeyword,
+    RisingEdgeKeyword,
     InKeyword,
     OutKeyword,
-    BlockKeyword,
     WireKeyword,
-    IncludeKeyword,
 }
 
 impl Display for TokenKind {
@@ -254,11 +258,15 @@ impl<R: Read> ILexer for Lexer<R> {
                     }
 
                     match s.as_ref() {
+                        "include" => Ok(Token::new(TokenKind::IncludeKeyword, token_location)),
+                        "block" => Ok(Token::new(TokenKind::BlockKeyword, token_location)),
+                        "sequential" => Ok(Token::new(TokenKind::SequentialKeyword, token_location)),
+                        "clock" => Ok(Token::new(TokenKind::ClockKeyword, token_location)),
+                        "falling_edge" => Ok(Token::new(TokenKind::FallingEdgeKeyword, token_location)),
+                        "rising_edge" => Ok(Token::new(TokenKind::RisingEdgeKeyword, token_location)),
                         "in" => Ok(Token::new(TokenKind::InKeyword, token_location)),
                         "out" => Ok(Token::new(TokenKind::OutKeyword, token_location)),
-                        "block" => Ok(Token::new(TokenKind::BlockKeyword, token_location)),
                         "wire" => Ok(Token::new(TokenKind::WireKeyword, token_location)),
-                        "include" => Ok(Token::new(TokenKind::IncludeKeyword, token_location)),
                         _ => Ok(Token::new_with_data(TokenKind::Identifier, TokenData::Identifier(s), token_location))
                     }
                 } else if x.is_numeric() {
