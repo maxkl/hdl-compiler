@@ -163,7 +163,8 @@ impl<L: ILexer> Parser<L> {
         let name = self.parse_string()?;
 
         Ok(Box::new(IncludeNode {
-            name
+            name,
+            full_path: None,
         }))
     }
 
