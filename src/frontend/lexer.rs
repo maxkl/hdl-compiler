@@ -31,6 +31,9 @@ pub enum ErrorKind {
     #[display(fmt = "number literal with value that doesn't fit into a register of specified width at {}", _0)]
     NumberLiteralValueTooBig(Location),
 
+    #[display(fmt = "invalid character escape: {} at {}", _0, _1)]
+    InvalidEscape(char, Location),
+
     #[display(fmt = "failed to read from input file")]
     Read,
 }
@@ -77,6 +80,7 @@ pub enum TokenKind {
 
     Identifier,
     Number,
+    String,
 
     Dot,
     Comma,
@@ -99,6 +103,7 @@ pub enum TokenKind {
     InKeyword,
     OutKeyword,
     BlockKeyword,
+    IncludeKeyword,
 }
 
 impl Display for TokenKind {
@@ -112,6 +117,7 @@ pub enum TokenData {
     None,
     Identifier(String),
     Number { value: u64, width: Option<u64> },
+    String(String),
 }
 
 /// Tokens of this type are emitted by the lexer
@@ -138,6 +144,7 @@ impl Token {
         match kind {
             TokenKind::Identifier => assert_matches!(data, TokenData::Identifier(_)),
             TokenKind::Number => assert_matches!(data, TokenData::Number { value: _, width: _ }),
+            TokenKind::String => assert_matches!(data, TokenData::String(_)),
             _ => assert_matches!(data, TokenData::None),
         }
 
@@ -249,6 +256,7 @@ impl<R: Read> ILexer for Lexer<R> {
                         "in" => Ok(Token::new(TokenKind::InKeyword, token_location)),
                         "out" => Ok(Token::new(TokenKind::OutKeyword, token_location)),
                         "block" => Ok(Token::new(TokenKind::BlockKeyword, token_location)),
+                        "include" => Ok(Token::new(TokenKind::IncludeKeyword, token_location)),
                         _ => Ok(Token::new_with_data(TokenKind::Identifier, TokenData::Identifier(s), token_location))
                     }
                 } else if x.is_numeric() {
@@ -284,6 +292,43 @@ impl<R: Read> ILexer for Lexer<R> {
                     self.unget_char();
 
                     Ok(Token::new_with_data(TokenKind::Number, TokenData::Number { value, width }, token_location))
+                } else if x == '"' {
+                    let mut s = String::new();
+
+                    let mut escape = false;
+
+                    loop {
+                        c = self.get_char()?;
+
+                        match c {
+                            Char(x) => {
+                                if escape {
+                                    let y = match x {
+                                        '"' | '\'' | '\\' => x,
+                                        'n' => '\n',
+                                        'r' => '\r',
+                                        't' => '\t',
+                                        '0' => '\0',
+                                        _ => return Err(ErrorKind::InvalidEscape(x, token_location).into()),
+                                    };
+                                    s.push(y);
+
+                                    escape = false;
+                                } else {
+                                    if x == '"' {
+                                        break;
+                                    } else if x == '\\' {
+                                        escape = true;
+                                    } else {
+                                        s.push(x);
+                                    }
+                                }
+                            },
+                            EOF => return Err(ErrorKind::UnexpectedEndOfFile(token_location).into()),
+                        }
+                    }
+
+                    Ok(Token::new_with_data(TokenKind::String, TokenData::String(s), token_location))
                 } else {
                     Err(ErrorKind::UnexpectedCharacter(x, token_location).into())
                 }
@@ -562,6 +607,109 @@ mod tests {
     }
 
     #[test]
+    fn string_basic() {
+        let source_text = "\"Hello, World!\"";
+        let expected_tokens = vec![
+            Token::new_with_data(TokenKind::String, TokenData::String("Hello, World!".to_string()), Location::new(1, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(1, 15)),
+        ];
+
+        let result = expect_tokens(source_text, &expected_tokens);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn string_empty() {
+        let source_text = "\"\"";
+        let expected_tokens = vec![
+            Token::new_with_data(TokenKind::String, TokenData::String("".to_string()), Location::new(1, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(1, 2)),
+        ];
+
+        let result = expect_tokens(source_text, &expected_tokens);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn string_multiline() {
+        let source_text = "\"One\n    Two\n   Three\"";
+        let expected_tokens = vec![
+            Token::new_with_data(TokenKind::String, TokenData::String("One\n    Two\n   Three".to_string()), Location::new(1, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(3, 9)),
+        ];
+
+        let result = expect_tokens(source_text, &expected_tokens);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn string_with_quote() {
+        let source_text = "\"String \\\"in\\\" a string\"";
+        let expected_tokens = vec![
+            Token::new_with_data(TokenKind::String, TokenData::String("String \"in\" a string".to_string()), Location::new(1, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(1, 24)),
+        ];
+
+        let result = expect_tokens(source_text, &expected_tokens);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn string_escapes() {
+        let source_text = "\"\\n\\r\\t\\\\\\0\\'\\\"\"";
+        let expected_tokens = vec![
+            Token::new_with_data(TokenKind::String, TokenData::String("\n\r\t\\\0\'\"".to_string()), Location::new(1, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(1, 16)),
+        ];
+
+        let result = expect_tokens(source_text, &expected_tokens);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn string_invalid_escape() {
+        let source_text = "\"Bad: \\o/";
+
+        let source = Cursor::new(source_text);
+
+        let mut lexer = Lexer::new(source);
+
+        let result = lexer.get_token();
+
+        if let Err(err) = result {
+            if let ErrorKind::InvalidEscape(c, l) = err.kind {
+                assert_eq!(c, 'o');
+                assert_eq!(Location::new(1, 1), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
+        }
+    }
+
+    #[test]
+    fn string_unterminated() {
+        let source_text = "\"This string never ends";
+
+        let source = Cursor::new(source_text);
+
+        let mut lexer = Lexer::new(source);
+
+        let result = lexer.get_token();
+
+        if let Err(err) = result {
+            if let ErrorKind::UnexpectedEndOfFile(l) = err.kind {
+                assert_eq!(Location::new(1, 1), l);
+            } else {
+                panic!("err has wrong kind");
+            }
+        } else {
+            panic!("result is not an Err(_)");
+        }
+    }
+
+    #[test]
     fn unexpected_character() {
         let source_text = "jane?doe";
 
@@ -592,6 +740,7 @@ mod tests {
         let source_text = "\
 hello
 42
+\"Hello, World!\"
 .
 ,
 ;
@@ -610,30 +759,33 @@ hello
 in
 out
 block
+include
 ";
 
         let expected_tokens = vec![
             Token::new_with_data(TokenKind::Identifier, TokenData::Identifier("hello".to_string()), Location::new(1, 1)),
             Token::new_with_data(TokenKind::Number, TokenData::Number { value: 42, width: None }, Location::new(2, 1)),
-            Token::new(TokenKind::Dot, Location::new(3, 1)),
-            Token::new(TokenKind::Comma, Location::new(4, 1)),
-            Token::new(TokenKind::Semicolon, Location::new(5, 1)),
-            Token::new(TokenKind::Colon, Location::new(6, 1)),
-            Token::new(TokenKind::Equals, Location::new(7, 1)),
-            Token::new(TokenKind::AND, Location::new(8, 1)),
-            Token::new(TokenKind::OR, Location::new(9, 1)),
-            Token::new(TokenKind::XOR, Location::new(10, 1)),
-            Token::new(TokenKind::NOT, Location::new(11, 1)),
-            Token::new(TokenKind::LeftBrace, Location::new(12, 1)),
-            Token::new(TokenKind::RightBrace, Location::new(13, 1)),
-            Token::new(TokenKind::LeftBracket, Location::new(14, 1)),
-            Token::new(TokenKind::RightBracket, Location::new(15, 1)),
-            Token::new(TokenKind::LeftParenthesis, Location::new(16, 1)),
-            Token::new(TokenKind::RightParenthesis, Location::new(17, 1)),
-            Token::new(TokenKind::InKeyword, Location::new(18, 1)),
-            Token::new(TokenKind::OutKeyword, Location::new(19, 1)),
-            Token::new(TokenKind::BlockKeyword, Location::new(20, 1)),
-            Token::new(TokenKind::EndOfFile, Location::new(21, 0)),
+            Token::new_with_data(TokenKind::String, TokenData::String("Hello, World!".to_string()), Location::new(3, 1)),
+            Token::new(TokenKind::Dot, Location::new(4, 1)),
+            Token::new(TokenKind::Comma, Location::new(5, 1)),
+            Token::new(TokenKind::Semicolon, Location::new(6, 1)),
+            Token::new(TokenKind::Colon, Location::new(7, 1)),
+            Token::new(TokenKind::Equals, Location::new(8, 1)),
+            Token::new(TokenKind::AND, Location::new(9, 1)),
+            Token::new(TokenKind::OR, Location::new(10, 1)),
+            Token::new(TokenKind::XOR, Location::new(11, 1)),
+            Token::new(TokenKind::NOT, Location::new(12, 1)),
+            Token::new(TokenKind::LeftBrace, Location::new(13, 1)),
+            Token::new(TokenKind::RightBrace, Location::new(14, 1)),
+            Token::new(TokenKind::LeftBracket, Location::new(15, 1)),
+            Token::new(TokenKind::RightBracket, Location::new(16, 1)),
+            Token::new(TokenKind::LeftParenthesis, Location::new(17, 1)),
+            Token::new(TokenKind::RightParenthesis, Location::new(18, 1)),
+            Token::new(TokenKind::InKeyword, Location::new(19, 1)),
+            Token::new(TokenKind::OutKeyword, Location::new(20, 1)),
+            Token::new(TokenKind::BlockKeyword, Location::new(21, 1)),
+            Token::new(TokenKind::IncludeKeyword, Location::new(22, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(23, 0)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);

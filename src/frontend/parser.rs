@@ -82,10 +82,24 @@ impl<L: ILexer> Parser<L> {
         }
     }
 
+    fn parse_string(&mut self) -> Result<Box<StringNode>, Error> {
+        let identifier = self.match_token(TokenKind::String)?;
+
+        if let TokenData::String(value) = identifier.data {
+            Ok(Box::new(StringNode {
+                value
+            }))
+        } else {
+            panic!("Token `kind` and `data` do not match up");
+        }
+    }
+
     /// Parser grammar (EBNF):
     ///
     /// ```ebnf
-    /// root                 = blocks ;
+    /// root                 = includes blocks ;
+    /// includes             = { include } ;
+    /// include              = 'include', string ;
     /// blocks               = { block } ;
     /// block                = 'block', identifier, '{', declarations, behaviour_statements, '}' ;
     /// declarations         = { declaration } ;
@@ -117,14 +131,40 @@ impl<L: ILexer> Parser<L> {
     /// ```
 
     pub fn parse(&mut self) -> Result<Box<RootNode>, Error> {
+        let includes = self.parse_includes()?;
+
         let blocks = self.parse_blocks()?;
 
         // Make sure there are no tokens left over
         self.match_token(TokenKind::EndOfFile)?;
 
         Ok(Box::new(RootNode {
+            includes,
             blocks,
             blocks_map: HashMap::new()
+        }))
+    }
+
+    fn parse_includes(&mut self) -> Result<Vec<Box<IncludeNode>>, Error> {
+        let mut includes = Vec::new();
+
+        while self.lookahead.kind == TokenKind::IncludeKeyword {
+            let include = self.parse_include()?;
+
+            includes.push(include);
+        }
+
+        Ok(includes)
+    }
+
+    fn parse_include(&mut self) -> Result<Box<IncludeNode>, Error> {
+        self.match_token(TokenKind::IncludeKeyword)?;
+
+        let name = self.parse_string()?;
+
+        Ok(Box::new(IncludeNode {
+            name,
+            full_path: None,
         }))
     }
 

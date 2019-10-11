@@ -2,10 +2,12 @@
 use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use super::symbol_table::SymbolTable;
 use super::expression_type::ExpressionType;
 use crate::shared::intermediate::IntermediateBlock;
+use crate::frontend::cache::Cache;
 
 #[derive(Debug)]
 pub struct IdentifierNode {
@@ -19,16 +21,40 @@ pub struct NumberNode {
 }
 
 #[derive(Debug)]
+pub struct StringNode {
+    pub value: String
+}
+
+#[derive(Debug)]
 pub struct RootNode {
+    pub includes: Vec<Box<IncludeNode>>,
     pub blocks: Vec<Rc<RefCell<BlockNode>>>,
     pub blocks_map: HashMap<String, usize>,
 }
 
 impl RootNode {
-    pub fn find_block(&self, name: &str) -> Option<&Rc<RefCell<BlockNode>>> {
+    pub fn find_block<'a>(&'a self, name: &str, cache: &'a Cache) -> Option<&'a Rc<RefCell<BlockNode>>> {
+        self.find_block_local(name)
+            .or_else(|| {
+                self.includes.iter()
+                    .find_map(|include| {
+                        let path = include.full_path.as_ref().unwrap();
+                        let cache_entry = cache.get(path).unwrap();
+                        cache_entry.ast.as_ref().unwrap().find_block_local(name)
+                    })
+            })
+    }
+
+    pub fn find_block_local(&self, name: &str) -> Option<&Rc<RefCell<BlockNode>>> {
         self.blocks_map.get(name)
             .map(|&index| self.blocks.get(index).unwrap())
     }
+}
+
+#[derive(Debug)]
+pub struct IncludeNode {
+    pub name: Box<StringNode>,
+    pub full_path: Option<PathBuf>,
 }
 
 #[derive(Debug)]

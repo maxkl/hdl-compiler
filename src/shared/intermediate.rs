@@ -17,6 +17,9 @@ pub enum ErrorKind {
 
     #[display(fmt = "size {} is invalid for {} statement", _1, _0)]
     StatementSizeInvalid(String, u16),
+
+    #[display(fmt = "duplicate definition of block '{}'", _0)]
+    DuplicateBlock(String),
 }
 
 pub type Error = error::Error<ErrorKind>;
@@ -157,4 +160,34 @@ impl IntermediateStatement {
     pub fn set_output(&mut self, index: u32, signal_id: u32) {
         self.output_signal_ids[index as usize] = signal_id;
     }
+}
+
+pub fn merge(inputs: &Vec<Intermediate>) -> Result<Intermediate, Error> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut output = Vec::new();
+
+    for input in inputs {
+        merge_two(&mut output, input)?;
+    }
+
+    Ok(output)
+}
+
+fn merge_two(target: &mut Intermediate, source: &Intermediate) -> Result<(), Error> {
+    for source_block in source {
+        let source_name = &source_block.name;
+
+        for target_block in target.iter() {
+            if &target_block.name == source_name {
+                return Err(ErrorKind::DuplicateBlock(source_name.clone()).into());
+            }
+        }
+
+        target.push(Rc::clone(source_block));
+    }
+
+    Ok(())
 }
