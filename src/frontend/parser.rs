@@ -101,12 +101,12 @@ impl<L: ILexer> Parser<L> {
     /// includes             = { include } ;
     /// include              = 'include', string ;
     /// blocks               = { block } ;
-    /// block                = 'block', identifier, '{', declarations, behaviour_statements, '}' ;
+    /// block                = [ 'sequential' ], 'block', identifier, '{', declarations, behaviour_statements, '}' ;
     /// declarations         = { declaration } ;
     /// declaration          = type, identifier_list, ';' ;
     /// identifier_list      = identifier, { ',', identifier } ;
     /// type                 = type_specifier, [ '[', number, ']' ] ;
-    /// type_specifier       = 'in' | 'out' | 'wire' | 'block', identifier ;
+    /// type_specifier       = 'clock', ( 'falling_edge' | 'rising_edge' ) | 'in' | 'out' | 'wire' | 'block', identifier ;
     /// behaviour_statements = { behaviour_statement } ;
     /// behaviour_statement  = behaviour_identifier, '=', expr, ';' ;
     /// behaviour_identifier = identifier, [ '.', identifier ], [ subscript ] ;
@@ -171,7 +171,8 @@ impl<L: ILexer> Parser<L> {
     fn parse_blocks<'a>(&mut self) -> Result<Vec<Rc<RefCell<BlockNode>>>, Error> {
         let mut blocks = Vec::<Rc<RefCell<BlockNode>>>::new();
 
-        while self.lookahead.kind == TokenKind::BlockKeyword {
+        while self.lookahead.kind == TokenKind::BlockKeyword
+            || self.lookahead.kind == TokenKind::SequentialKeyword {
             let block = self.parse_block()?;
 
             blocks.push(block);
@@ -181,6 +182,14 @@ impl<L: ILexer> Parser<L> {
     }
 
     fn parse_block<'a>(&mut self) -> Result<Rc<RefCell<BlockNode>>, Error> {
+        let is_sequential = if self.lookahead.kind == TokenKind::SequentialKeyword {
+            self.match_token(TokenKind::SequentialKeyword)?;
+
+            true
+        } else {
+            false
+        };
+
         self.match_token(TokenKind::BlockKeyword)?;
 
         let name = self.parse_identifier()?;
@@ -195,6 +204,7 @@ impl<L: ILexer> Parser<L> {
 
         Ok(Rc::new(RefCell::new(BlockNode {
             name,
+            is_sequential,
             declarations,
             behaviour_statements,
             symbol_table: None,
@@ -205,7 +215,8 @@ impl<L: ILexer> Parser<L> {
     fn parse_declarations(&mut self) -> Result<Vec<Box<DeclarationNode>>, Error> {
         let mut declarations = Vec::<Box<DeclarationNode>>::new();
 
-        while self.lookahead.kind == TokenKind::InKeyword
+        while self.lookahead.kind == TokenKind::ClockKeyword
+            || self.lookahead.kind == TokenKind::InKeyword
             || self.lookahead.kind == TokenKind::OutKeyword
             || self.lookahead.kind == TokenKind::WireKeyword
             || self.lookahead.kind == TokenKind::BlockKeyword {
@@ -254,6 +265,23 @@ impl<L: ILexer> Parser<L> {
 
     fn parse_type_specifier(&mut self) -> Result<Box<TypeSpecifierNode>, Error> {
         match self.lookahead.kind {
+            TokenKind::ClockKeyword => {
+                self.match_token(TokenKind::ClockKeyword)?;
+
+                let edge_type = if self.lookahead.kind == TokenKind::FallingEdgeKeyword {
+                    self.match_token(TokenKind::FallingEdgeKeyword)?;
+
+                    EdgeType::Falling
+                } else if self.lookahead.kind == TokenKind::RisingEdgeKeyword {
+                    self.match_token(TokenKind::RisingEdgeKeyword)?;
+
+                    EdgeType::Rising
+                } else {
+                    return Err(ErrorKind::UnexpectedToken2(self.lookahead.location, "edge type".to_string(), self.lookahead.kind).into());
+                };
+
+                Ok(Box::new(TypeSpecifierNode::Clock(edge_type)))
+            },
             TokenKind::InKeyword => {
                 self.match_token(TokenKind::InKeyword)?;
 

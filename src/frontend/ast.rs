@@ -60,6 +60,7 @@ pub struct IncludeNode {
 #[derive(Debug)]
 pub struct BlockNode {
     pub name: Box<IdentifierNode>,
+    pub is_sequential: bool,
     pub declarations: Vec<Box<DeclarationNode>>,
     pub behaviour_statements: Vec<Box<BehaviourStatementNode>>,
 
@@ -80,8 +81,15 @@ pub struct TypeNode {
     pub width: Option<Box<NumberNode>>
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum EdgeType {
+    Rising,
+    Falling,
+}
+
 #[derive(Debug)]
 pub enum TypeSpecifierNode {
+    Clock(EdgeType),
     In,
     Out,
     Wire,

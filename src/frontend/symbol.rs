@@ -2,10 +2,11 @@
 use std::rc::Weak;
 use std::cell::RefCell;
 
-use super::ast::BlockNode;
+use crate::frontend::ast::{BlockNode, EdgeType};
 
 #[derive(Debug, Clone)]
 pub enum SymbolTypeSpecifier {
+    Clock(EdgeType),
     In,
     Out,
     Wire,
