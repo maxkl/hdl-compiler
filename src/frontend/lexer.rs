@@ -103,6 +103,7 @@ pub enum TokenKind {
     InKeyword,
     OutKeyword,
     BlockKeyword,
+    WireKeyword,
     IncludeKeyword,
 }
 
@@ -256,6 +257,7 @@ impl<R: Read> ILexer for Lexer<R> {
                         "in" => Ok(Token::new(TokenKind::InKeyword, token_location)),
                         "out" => Ok(Token::new(TokenKind::OutKeyword, token_location)),
                         "block" => Ok(Token::new(TokenKind::BlockKeyword, token_location)),
+                        "wire" => Ok(Token::new(TokenKind::WireKeyword, token_location)),
                         "include" => Ok(Token::new(TokenKind::IncludeKeyword, token_location)),
                         _ => Ok(Token::new_with_data(TokenKind::Identifier, TokenData::Identifier(s), token_location))
                     }
