@@ -60,6 +60,12 @@ impl IntermediateGenerator {
         }
 
         for symbol in symbol_table.iter_mut() {
+            if let SymbolTypeSpecifier::Wire = symbol.typ.specifier {
+                symbol.signal_id = intermediate_block.allocate_wires(symbol.typ.width as u32)?;
+            }
+        }
+
+        for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Block(block_weak) = &symbol.typ.specifier {
                 let block_refcell = Weak::upgrade(block_weak).unwrap();
                 let block = RefCell::borrow(block_refcell.borrow());

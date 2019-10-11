@@ -106,7 +106,7 @@ impl<L: ILexer> Parser<L> {
     /// declaration          = type, identifier_list, ';' ;
     /// identifier_list      = identifier, { ',', identifier } ;
     /// type                 = type_specifier, [ '[', number, ']' ] ;
-    /// type_specifier       = 'in' | 'out' | 'block', identifier ;
+    /// type_specifier       = 'in' | 'out' | 'wire' | 'block', identifier ;
     /// behaviour_statements = { behaviour_statement } ;
     /// behaviour_statement  = behaviour_identifier, '=', expr, ';' ;
     /// behaviour_identifier = identifier, [ '.', identifier ], [ subscript ] ;
@@ -207,6 +207,7 @@ impl<L: ILexer> Parser<L> {
 
         while self.lookahead.kind == TokenKind::InKeyword
             || self.lookahead.kind == TokenKind::OutKeyword
+            || self.lookahead.kind == TokenKind::WireKeyword
             || self.lookahead.kind == TokenKind::BlockKeyword {
 
             let declaration = self.parse_declaration()?;
@@ -262,6 +263,11 @@ impl<L: ILexer> Parser<L> {
                 self.match_token(TokenKind::OutKeyword)?;
 
                 Ok(Box::new(TypeSpecifierNode::Out))
+            },
+            TokenKind::WireKeyword => {
+                self.match_token(TokenKind::WireKeyword)?;
+
+                Ok(Box::new(TypeSpecifierNode::Wire))
             },
             TokenKind::BlockKeyword => {
                 self.match_token(TokenKind::BlockKeyword)?;

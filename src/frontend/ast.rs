@@ -84,6 +84,7 @@ pub struct TypeNode {
 pub enum TypeSpecifierNode {
     In,
     Out,
+    Wire,
     Block(Box<IdentifierNode>)
 }
 

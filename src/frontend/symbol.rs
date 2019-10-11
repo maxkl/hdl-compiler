@@ -8,6 +8,7 @@ use super::ast::BlockNode;
 pub enum SymbolTypeSpecifier {
     In,
     Out,
+    Wire,
     Block(Weak<RefCell<BlockNode>>),
 }
 

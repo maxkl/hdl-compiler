@@ -25,11 +25,11 @@ pub enum ErrorKind {
     #[display(fmt = "signal(s) declared with invalid width of 0")]
     ZeroWidth,
 
-    #[display(fmt = "read-only signal used as target operand")]
-    OutputAsTargetSignal,
+    #[display(fmt = "target operand is not writable")]
+    TargetNotWritable,
 
-    #[display(fmt = "write-only signal used as source operand")]
-    InputAsSourceSignal,
+    #[display(fmt = "source operand is not readable")]
+    SourceNotReadable,
 
     #[display(fmt = "types of operands to {} operator are incompatible", _0)]
     IncompatibleOperandTypes(String),
@@ -132,6 +132,7 @@ impl SemanticAnalyzer {
         let type_specifier = match typ.specifier.as_ref() {
             TypeSpecifierNode::In => SymbolTypeSpecifier::In,
             TypeSpecifierNode::Out => SymbolTypeSpecifier::Out,
+            TypeSpecifierNode::Wire => SymbolTypeSpecifier::Wire,
             TypeSpecifierNode::Block(name) => {
                 let name = &name.value;
 
@@ -178,14 +179,14 @@ impl SemanticAnalyzer {
     fn analyze_behaviour_statement(behaviour_statement: &mut BehaviourStatementNode, symbol_table: &SymbolTable) -> Result<(), Error> {
         let target_type = Self::analyze_behaviour_identifier(behaviour_statement.target.as_mut(), symbol_table)?;
 
-        if target_type.access_type != AccessType::Write {
-            return Err(ErrorKind::OutputAsTargetSignal.into());
+        if !target_type.access_type.writable {
+            return Err(ErrorKind::TargetNotWritable.into());
         }
 
         let source_type = Self::analyze_expression(behaviour_statement.source.as_mut(), symbol_table)?;
 
-        if source_type.access_type != AccessType::Read {
-            return Err(ErrorKind::InputAsSourceSignal.into());
+        if !source_type.access_type.readable {
+            return Err(ErrorKind::SourceNotReadable.into());
         }
 
         if target_type.width != source_type.width {
@@ -230,8 +231,8 @@ impl SemanticAnalyzer {
             let property_symbol_type = &property_symbol.typ;
 
             let access_type = match property_symbol_type.specifier {
-                SymbolTypeSpecifier::In => AccessType::Write,
-                SymbolTypeSpecifier::Out => AccessType::Read,
+                SymbolTypeSpecifier::In => AccessType::rw(),
+                SymbolTypeSpecifier::Out => AccessType::r(),
                 _ => return Err(ErrorKind::PrivateProperty(symbol_name.to_string(), property_name.to_string()).into()),
             };
 
@@ -240,8 +241,9 @@ impl SemanticAnalyzer {
             access_type
         } else {
             match symbol_type.specifier {
-                SymbolTypeSpecifier::In => AccessType::Read,
-                SymbolTypeSpecifier::Out => AccessType::Write,
+                SymbolTypeSpecifier::In => AccessType::r(),
+                SymbolTypeSpecifier::Out => AccessType::rw(),
+                SymbolTypeSpecifier::Wire => AccessType::rw(),
                 SymbolTypeSpecifier::Block(_) => return Err(ErrorKind::BlockAsSignal.into()),
             }
         };
@@ -292,8 +294,8 @@ impl SemanticAnalyzer {
             ExpressionNodeData::Variable(behaviour_identifier) => {
                 let expression_type = Self::analyze_behaviour_identifier(behaviour_identifier.as_mut(), symbol_table)?;
 
-                if expression_type.access_type != AccessType::Read {
-                    return Err(ErrorKind::InputAsSourceSignal.into());
+                if !expression_type.access_type.readable {
+                    return Err(ErrorKind::SourceNotReadable.into());
                 }
 
                 expression_type
@@ -303,7 +305,7 @@ impl SemanticAnalyzer {
                     .ok_or_else(|| Error::new(ErrorKind::NoWidth))?;
 
                 ExpressionType {
-                    access_type: AccessType::Read,
+                    access_type: AccessType::r(),
                     width
                 }
             },
@@ -317,8 +319,8 @@ impl SemanticAnalyzer {
     fn analyze_unary_expression(_op: UnaryOp, operand: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
         let expression_type = Self::analyze_expression(operand, symbol_table)?;
 
-        if expression_type.access_type != AccessType::Read {
-            return Err(ErrorKind::InputAsSourceSignal.into());
+        if !expression_type.access_type.readable {
+            return Err(ErrorKind::SourceNotReadable.into());
         }
 
         Ok(expression_type)
@@ -327,14 +329,14 @@ impl SemanticAnalyzer {
     fn analyze_binary_expression(_op: BinaryOp, left: &mut ExpressionNode, right: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
         let expression_type_left = Self::analyze_expression(left, symbol_table)?;
 
-        if expression_type_left.access_type != AccessType::Read {
-            return Err(ErrorKind::InputAsSourceSignal.into());
+        if !expression_type_left.access_type.readable {
+            return Err(ErrorKind::SourceNotReadable.into());
         }
 
         let expression_type_right = Self::analyze_expression(right, symbol_table)?;
 
-        if expression_type_right.access_type != AccessType::Read {
-            return Err(ErrorKind::InputAsSourceSignal.into());
+        if !expression_type_right.access_type.readable {
+            return Err(ErrorKind::SourceNotReadable.into());
         }
 
         let left_width = expression_type_left.width;
@@ -346,7 +348,7 @@ impl SemanticAnalyzer {
         }
 
         Ok(ExpressionType {
-            access_type: AccessType::Read,
+            access_type: AccessType::r(),
             width: cmp::max(left_width, right_width),
         })
     }
