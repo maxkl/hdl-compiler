@@ -110,7 +110,6 @@ impl IntermediateGenerator {
                 .unwrap();
             let clock_signal_id = clock.output_base_signal_id;
 
-            let mut i = 0;
             for symbol in symbol_table.iter_mut() {
                 if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
                     // This will be the input signal of the flip-flop
@@ -126,8 +125,6 @@ impl IntermediateGenerator {
                         stmt.set_output(0, symbol.output_base_signal_id + j as u32);
                         intermediate_block.add_statement(stmt);
                     }
-
-                    i += 1;
                 }
             }
         }
