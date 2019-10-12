@@ -37,6 +37,8 @@ enum ComponentData {
     XOR {},
     #[serde(rename = "not")]
     NOT {},
+    #[serde(rename = "dflipflop")]
+    FlipFlop {},
     #[serde(rename = "togglebutton")]
     ToggleButton {},
     #[serde(rename = "led")]
@@ -80,6 +82,7 @@ enum ComponentType {
     OR,
     XOR,
     NOT,
+    FlipFlop,
 
     Circuit(String),
 }
@@ -231,6 +234,7 @@ impl LogicSimulator {
                 IntermediateOp::OR => ComponentType::OR,
                 IntermediateOp::XOR => ComponentType::XOR,
                 IntermediateOp::NOT => ComponentType::NOT,
+                IntermediateOp::FlipFlop => ComponentType::FlipFlop,
                 _ => return Err(ErrorKind::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op)).into()),
             };
 
@@ -329,6 +333,15 @@ impl LogicSimulator {
                     });
 
                     top_offset += 4;
+                },
+                ComponentType::FlipFlop => {
+                    circuit_data.components.push(CommonComponentData {
+                        x: component_offset + 4,
+                        y: top_offset,
+                        data: ComponentData::FlipFlop {},
+                    });
+
+                    top_offset += 6;
                 },
                 ComponentType::Circuit(name) => {
                     circuit_data.components.push(CommonComponentData {

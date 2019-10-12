@@ -208,7 +208,8 @@ impl SemanticAnalyzer {
         let symbol = Symbol {
             name: name.to_string(),
             typ: symbol_type.clone(),
-            signal_id: 0,
+            base_signal_id: 0,
+            output_base_signal_id: 0,
         };
 
         symbol_table.add(symbol)

@@ -31,6 +31,12 @@ pub struct IntermediateGenerator {
     //
 }
 
+#[derive(Copy, Clone)]
+enum AccessDirection {
+    Read,
+    Write,
+}
+
 impl IntermediateGenerator {
     pub fn generate(root: &RootNode) -> Result<Intermediate, Error> {
         Self::generate_blocks(root)
@@ -50,27 +56,30 @@ impl IntermediateGenerator {
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Clock(_) = symbol.typ.specifier {
-                symbol.signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+                let signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+                symbol.base_signal_id = signal_id;
+                symbol.output_base_signal_id = signal_id;
             }
         }
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::In = symbol.typ.specifier {
-                symbol.signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+                let signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+                symbol.base_signal_id = signal_id;
+                symbol.output_base_signal_id = signal_id;
             }
         }
-
-        let mut actual_outputs = Vec::new();
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
                 let signal_id = intermediate_block.allocate_output_signals(symbol.typ.width as u32)?;
 
                 if block.is_sequential {
-                    // Store output signal ID for later when we'll generate the flip-flops
-                    actual_outputs.push(signal_id);
+                    // symbol.base_signal_id will be set later when the output flip-flops are generated
+                    symbol.output_base_signal_id = signal_id;
                 } else {
-                    symbol.signal_id = signal_id;
+                    symbol.base_signal_id = signal_id;
+                    symbol.output_base_signal_id = signal_id;
                 }
             }
         }
@@ -80,18 +89,17 @@ impl IntermediateGenerator {
                 let block_refcell = Weak::upgrade(block_weak).unwrap();
                 let block = RefCell::borrow(block_refcell.borrow());
                 let sub_intermediate_block = block.intermediate_block.as_ref().unwrap();
-                symbol.signal_id = intermediate_block.add_block(Weak::clone(sub_intermediate_block))?;
+                symbol.base_signal_id = intermediate_block.add_block(Weak::clone(sub_intermediate_block))?;
+                // symbol.output_base_signal_id is left untouched, as it doesn't make sense to specify it
             }
         }
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Wire = symbol.typ.specifier {
-                symbol.signal_id = intermediate_block.allocate_signals(symbol.typ.width as u32);
+                let signal_id = intermediate_block.allocate_signals(symbol.typ.width as u32);
+                symbol.base_signal_id = signal_id;
+                symbol.output_base_signal_id = signal_id;
             }
-        }
-
-        for behaviour_statement in &block.behaviour_statements {
-            Self::generate_behaviour_statement(behaviour_statement, &symbol_table, &mut intermediate_block)?;
         }
 
         // Generate flip-flops for all output signals
@@ -100,26 +108,32 @@ impl IntermediateGenerator {
             let clock = symbol_table.iter()
                 .find(|symbol| matches!(symbol.typ.specifier, SymbolTypeSpecifier::Clock(_)))
                 .unwrap();
-            let clock_signal_id = clock.signal_id;
+            let clock_signal_id = clock.output_base_signal_id;
 
             let mut i = 0;
             for symbol in symbol_table.iter_mut() {
                 if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
                     // This will be the input signal of the flip-flop
-                    symbol.signal_id = intermediate_block.allocate_signals(symbol.typ.width as u32);
+                    symbol.base_signal_id = intermediate_block.allocate_signals(symbol.typ.width as u32);
 
-                    let mut stmt = IntermediateStatement::new(IntermediateOp::FlipFlop, 1)?;
-                    // Connect clock signal to clock input
-                    stmt.set_input(0, clock_signal_id);
-                    // Connect combinational output to the data input
-                    stmt.set_input(1, symbol.signal_id);
-                    // Connect flip-flop output to the output of the block
-                    stmt.set_output(0, actual_outputs[i]);
-                    intermediate_block.add_statement(stmt);
+                    for j in 0..symbol.typ.width {
+                        let mut stmt = IntermediateStatement::new(IntermediateOp::FlipFlop, 1)?;
+                        // Connect the clock signal to the clock input
+                        stmt.set_input(0, clock_signal_id);
+                        // Connect the output of the combinational logic to the data input
+                        stmt.set_input(1, symbol.base_signal_id + j as u32);
+                        // Connect the flip-flops output to the output of the block
+                        stmt.set_output(0, symbol.output_base_signal_id + j as u32);
+                        intermediate_block.add_statement(stmt);
+                    }
 
                     i += 1;
                 }
             }
+        }
+
+        for behaviour_statement in &block.behaviour_statements {
+            Self::generate_behaviour_statement(behaviour_statement, &symbol_table, &mut intermediate_block)?;
         }
 
         let intermediate_block_rc = Rc::new(intermediate_block);
@@ -130,7 +144,7 @@ impl IntermediateGenerator {
     }
 
     fn generate_behaviour_statement(behaviour_statement: &BehaviourStatementNode, symbol_table: &SymbolTable, intermediate_block: &mut IntermediateBlock) -> Result<(), Error> {
-        let target_signal_id = Self::generate_behaviour_identifier(&behaviour_statement.target, symbol_table)?;
+        let target_signal_id = Self::generate_behaviour_identifier(&behaviour_statement.target, symbol_table, AccessDirection::Write)?;
 
         let source_signal_id = Self::generate_expression(&behaviour_statement.source, symbol_table, intermediate_block)?;
 
@@ -147,13 +161,11 @@ impl IntermediateGenerator {
         Ok(())
     }
 
-    fn generate_behaviour_identifier(behaviour_identifier: &BehaviourIdentifierNode, symbol_table: &SymbolTable) -> Result<u32, Error> {
+    fn generate_behaviour_identifier(behaviour_identifier: &BehaviourIdentifierNode, symbol_table: &SymbolTable, access_direction: AccessDirection) -> Result<u32, Error> {
         let symbol = symbol_table.find(&behaviour_identifier.name.value).unwrap();
         let symbol_type = &symbol.typ;
 
-        let mut signal_id = symbol.signal_id;
-
-        if let Some(property_identifier) = &behaviour_identifier.property {
+        let mut signal_id = if let Some(property_identifier) = &behaviour_identifier.property {
             let block_weak = match &symbol_type.specifier {
                 SymbolTypeSpecifier::Block(block_weak) => block_weak,
                 _ => panic!(),
@@ -166,8 +178,18 @@ impl IntermediateGenerator {
 
             let property_symbol = block_symbol_table.find(&property_identifier.value).unwrap();
 
-            signal_id += property_symbol.signal_id;
-        }
+            let offset = match access_direction {
+                AccessDirection::Read => property_symbol.output_base_signal_id,
+                AccessDirection::Write => property_symbol.base_signal_id,
+            };
+
+            symbol.base_signal_id + offset
+        } else {
+            match access_direction {
+                AccessDirection::Read => symbol.output_base_signal_id,
+                AccessDirection::Write => symbol.base_signal_id,
+            }
+        };
 
         if let Some(subscript) = &behaviour_identifier.subscript {
             signal_id += subscript.lower_index.unwrap() as u32;
@@ -180,7 +202,7 @@ impl IntermediateGenerator {
         match &expression.data {
             ExpressionNodeData::Binary(op, left, right) => Self::generate_binary_expression(*op, left, right, expression.typ.as_ref().unwrap(), symbol_table, intermediate_block),
             ExpressionNodeData::Unary(op, operand) => Self::generate_unary_expression(*op, operand, expression.typ.as_ref().unwrap(), symbol_table, intermediate_block),
-            ExpressionNodeData::Variable(behaviour_identifier) => Self::generate_behaviour_identifier(behaviour_identifier, symbol_table),
+            ExpressionNodeData::Variable(behaviour_identifier) => Self::generate_behaviour_identifier(behaviour_identifier, symbol_table, AccessDirection::Read),
             ExpressionNodeData::Const(number) => Self::generate_constant(number.value, number.width.unwrap(), intermediate_block),
         }
     }
