@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::borrow::Borrow;
 
 use derive_more::Display;
+use matches::matches;
 
 use crate::shared::intermediate::{IntermediateBlock, IntermediateStatement, IntermediateOp, Intermediate};
 use super::ast::*;
@@ -48,14 +49,29 @@ impl IntermediateGenerator {
         let mut intermediate_block = IntermediateBlock::new(block.name.value.clone());
 
         for symbol in symbol_table.iter_mut() {
-            if let SymbolTypeSpecifier::In = symbol.typ.specifier {
+            if let SymbolTypeSpecifier::Clock(_) = symbol.typ.specifier {
                 symbol.signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
             }
         }
 
         for symbol in symbol_table.iter_mut() {
+            if let SymbolTypeSpecifier::In = symbol.typ.specifier {
+                symbol.signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+            }
+        }
+
+        let mut actual_outputs = Vec::new();
+
+        for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
-                symbol.signal_id = intermediate_block.allocate_output_signals(symbol.typ.width as u32)?;
+                let signal_id = intermediate_block.allocate_output_signals(symbol.typ.width as u32)?;
+
+                if block.is_sequential {
+                    // Store output signal ID for later when we'll generate the flip-flops
+                    actual_outputs.push(signal_id);
+                } else {
+                    symbol.signal_id = signal_id;
+                }
             }
         }
 
@@ -76,6 +92,34 @@ impl IntermediateGenerator {
 
         for behaviour_statement in &block.behaviour_statements {
             Self::generate_behaviour_statement(behaviour_statement, &symbol_table, &mut intermediate_block)?;
+        }
+
+        // Generate flip-flops for all output signals
+        if block.is_sequential {
+            // Find the clock input
+            let clock = symbol_table.iter()
+                .find(|symbol| matches!(symbol.typ.specifier, SymbolTypeSpecifier::Clock(_)))
+                .unwrap();
+            let clock_signal_id = clock.signal_id;
+
+            let mut i = 0;
+            for symbol in symbol_table.iter_mut() {
+                if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
+                    // This will be the input signal of the flip-flop
+                    symbol.signal_id = intermediate_block.allocate_signals(symbol.typ.width as u32);
+
+                    let mut stmt = IntermediateStatement::new(IntermediateOp::FlipFlop, 1)?;
+                    // Connect clock signal to clock input
+                    stmt.set_input(0, clock_signal_id);
+                    // Connect combinational output to the data input
+                    stmt.set_input(1, symbol.signal_id);
+                    // Connect flip-flop output to the output of the block
+                    stmt.set_output(0, actual_outputs[i]);
+                    intermediate_block.add_statement(stmt);
+
+                    i += 1;
+                }
+            }
         }
 
         let intermediate_block_rc = Rc::new(intermediate_block);
