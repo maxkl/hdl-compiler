@@ -40,6 +40,8 @@ pub enum IntermediateOp {
     NOT,
 
     MUX,
+
+    FlipFlop,
 }
 
 #[derive(Debug)]
@@ -143,6 +145,13 @@ impl IntermediateStatement {
                 (1, 1)
             },
             IntermediateOp::MUX => (size as usize + (1 << size as usize), 1),
+            IntermediateOp::FlipFlop => {
+                if size != 1 {
+                    return Err(ErrorKind::StatementSizeInvalid("FlipFlop".to_string(), size).into());
+                }
+
+                (2, 1)
+            }
         };
 
         Ok(IntermediateStatement {
