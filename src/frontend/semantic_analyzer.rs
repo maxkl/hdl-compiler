@@ -6,6 +6,7 @@ use std::collections::hash_map::Entry;
 use std::cmp;
 
 use derive_more::Display;
+use matches::matches;
 
 use super::ast::*;
 use super::symbol_table::SymbolTable;
@@ -21,6 +22,18 @@ pub enum ErrorKind {
 
     #[display(fmt = "use of undeclared identifier `{}`", _0)]
     UndeclaredIdentifier(String),
+
+    #[display(fmt = "clock input declared in combinational block")]
+    ClockInCombinationalBlock,
+
+    #[display(fmt = "more than one clock input declared")]
+    TooManyClocks,
+
+    #[display(fmt = "missing clock input for sequential block")]
+    MissingClock,
+
+    #[display(fmt = "clock input has width greater than one")]
+    ClockTooWide,
 
     #[display(fmt = "signal(s) declared with invalid width of 0")]
     ZeroWidth,
@@ -103,8 +116,24 @@ impl SemanticAnalyzer {
             {
                 let mut symbol_table_ref = RefCell::borrow_mut(symbol_table.borrow());
 
+                let mut total_clock_count = 0;
+
                 for declaration in &mut block_ref.declarations {
-                    Self::analyze_declaration(declaration, &mut symbol_table_ref, root, cache)?;
+                    let clock_count = Self::analyze_declaration(declaration, &mut symbol_table_ref, root, cache)?;
+
+                    total_clock_count += clock_count;
+                }
+
+                if block_ref.is_sequential {
+                    if total_clock_count == 0 {
+                        return Err(ErrorKind::MissingClock.into());
+                    } else if total_clock_count > 1 {
+                        return Err(ErrorKind::TooManyClocks.into());
+                    }
+                } else {
+                    if total_clock_count != 0 {
+                        return Err(ErrorKind::ClockInCombinationalBlock.into());
+                    }
                 }
 
                 for behaviour_statement in &mut block_ref.behaviour_statements {
@@ -118,18 +147,26 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_declaration(declaration: &DeclarationNode, symbol_table: &mut SymbolTable, root: &RootNode, cache: &Cache) -> Result<(), Error> {
+    fn analyze_declaration(declaration: &DeclarationNode, symbol_table: &mut SymbolTable, root: &RootNode, cache: &Cache) -> Result<usize, Error> {
         let symbol_type = Self::analyze_type(declaration.typ.as_ref(), root, cache)?;
+
+        let is_clock = matches!(symbol_type.specifier, SymbolTypeSpecifier::Clock(_));
+        let mut clock_count: usize = 0;
 
         for name in &declaration.names {
             Self::analyze_declaration_identifier(name, symbol_table, &symbol_type)?;
+
+            if is_clock {
+                clock_count += 1;
+            }
         }
 
-        Ok(())
+        Ok(clock_count)
     }
 
     fn analyze_type(typ: &TypeNode, root: &RootNode, cache: &Cache) -> Result<SymbolType, Error> {
         let type_specifier = match typ.specifier.as_ref() {
+            TypeSpecifierNode::Clock(edge_type) => SymbolTypeSpecifier::Clock(*edge_type),
             TypeSpecifierNode::In => SymbolTypeSpecifier::In,
             TypeSpecifierNode::Out => SymbolTypeSpecifier::Out,
             TypeSpecifierNode::Wire => SymbolTypeSpecifier::Wire,
@@ -155,6 +192,10 @@ impl SemanticAnalyzer {
             1
         };
 
+        if matches!(type_specifier, SymbolTypeSpecifier::Clock(_)) && width > 1 {
+            return Err(ErrorKind::ClockTooWide.into());
+        }
+
         Ok(SymbolType {
             specifier: type_specifier,
             width: width,
@@ -167,7 +208,8 @@ impl SemanticAnalyzer {
         let symbol = Symbol {
             name: name.to_string(),
             typ: symbol_type.clone(),
-            signal_id: 0,
+            base_signal_id: 0,
+            output_base_signal_id: 0,
         };
 
         symbol_table.add(symbol)
@@ -231,6 +273,7 @@ impl SemanticAnalyzer {
             let property_symbol_type = &property_symbol.typ;
 
             let access_type = match property_symbol_type.specifier {
+                SymbolTypeSpecifier::Clock(_) => AccessType::rw(),
                 SymbolTypeSpecifier::In => AccessType::rw(),
                 SymbolTypeSpecifier::Out => AccessType::r(),
                 _ => return Err(ErrorKind::PrivateProperty(symbol_name.to_string(), property_name.to_string()).into()),
@@ -241,6 +284,7 @@ impl SemanticAnalyzer {
             access_type
         } else {
             match symbol_type.specifier {
+                SymbolTypeSpecifier::Clock(_) => AccessType::r(),
                 SymbolTypeSpecifier::In => AccessType::r(),
                 SymbolTypeSpecifier::Out => AccessType::rw(),
                 SymbolTypeSpecifier::Wire => AccessType::rw(),

@@ -6,14 +6,11 @@ use crate::shared::error;
 
 #[derive(Debug, Display)]
 pub enum ErrorKind {
-    #[display(fmt = "attempt to add input signals after adding output signals, wires, blocks or statements")]
+    #[display(fmt = "attempt to add input signals after adding output signals, blocks or statements")]
     NoMoreInputSignals,
 
-    #[display(fmt = "attempt to add output signals after adding wires, blocks or statements")]
+    #[display(fmt = "attempt to add output signals after adding blocks or statements")]
     NoMoreOutputSignals,
-
-    #[display(fmt = "attempt to add wires after adding blocks or statements")]
-    NoMoreWires,
 
     #[display(fmt = "attempt to add block after adding statements")]
     NoMoreBlocks,
@@ -43,6 +40,8 @@ pub enum IntermediateOp {
     NOT,
 
     MUX,
+
+    FlipFlop,
 }
 
 #[derive(Debug)]
@@ -59,7 +58,6 @@ pub struct IntermediateBlock {
 
     pub input_signal_count: u32,
     pub output_signal_count: u32,
-    pub wire_count: u32,
     pub blocks: Vec<Weak<IntermediateBlock>>,
     pub statements: Vec<IntermediateStatement>,
     pub next_signal_id: u32,
@@ -71,7 +69,6 @@ impl IntermediateBlock {
             name,
             input_signal_count: 0,
             output_signal_count: 0,
-            wire_count: 0,
             blocks: Vec::new(),
             statements: Vec::new(),
             next_signal_id: 0,
@@ -85,7 +82,7 @@ impl IntermediateBlock {
     }
 
     pub fn allocate_input_signals(&mut self, count: u32) -> Result<u32, Error> {
-        if self.output_signal_count > 0 || self.wire_count > 0 || !self.blocks.is_empty() || !self.statements.is_empty() {
+        if self.output_signal_count > 0 || !self.blocks.is_empty() || !self.statements.is_empty() {
             return Err(ErrorKind::NoMoreInputSignals.into());
         }
 
@@ -97,24 +94,12 @@ impl IntermediateBlock {
     }
 
     pub fn allocate_output_signals(&mut self, count: u32) -> Result<u32, Error> {
-        if self.wire_count > 0 || !self.blocks.is_empty() || !self.statements.is_empty() {
+        if !self.blocks.is_empty() || !self.statements.is_empty() {
             return Err(ErrorKind::NoMoreOutputSignals.into());
         }
 
         let base_signal_id = self.next_signal_id;
         self.output_signal_count += count;
-        self.next_signal_id += count;
-
-        Ok(base_signal_id)
-    }
-
-    pub fn allocate_wires(&mut self, count: u32) -> Result<u32, Error> {
-        if !self.blocks.is_empty() || !self.statements.is_empty() {
-            return Err(ErrorKind::NoMoreWires.into());
-        }
-
-        let base_signal_id = self.next_signal_id;
-        self.wire_count += count;
         self.next_signal_id += count;
 
         Ok(base_signal_id)
@@ -160,6 +145,13 @@ impl IntermediateStatement {
                 (1, 1)
             },
             IntermediateOp::MUX => (size as usize + (1 << size as usize), 1),
+            IntermediateOp::FlipFlop => {
+                if size != 1 {
+                    return Err(ErrorKind::StatementSizeInvalid("FlipFlop".to_string(), size).into());
+                }
+
+                (2, 1)
+            }
         };
 
         Ok(IntermediateStatement {

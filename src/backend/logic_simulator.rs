@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use std::rc::{Rc, Weak};
 use std::fs::File;
 use std::io::BufWriter;
+use std::cmp;
 
 use serde::{Serialize, Deserialize};
 use serde_json;
@@ -37,6 +38,8 @@ enum ComponentData {
     XOR {},
     #[serde(rename = "not")]
     NOT {},
+    #[serde(rename = "dflipflop")]
+    FlipFlop {},
     #[serde(rename = "togglebutton")]
     ToggleButton {},
     #[serde(rename = "led")]
@@ -73,13 +76,13 @@ struct FileData {
 }
 
 enum ComponentType {
-    Connect,
     Const0,
     Const1,
     AND,
     OR,
     XOR,
     NOT,
+    FlipFlop,
 
     Circuit(String),
 }
@@ -88,13 +91,123 @@ struct Component {
     typ: ComponentType,
     inputs: Vec<u32>,
     outputs: Vec<u32>,
+
+    width: i32,
+    height: i32,
+    input_pin_positions: Vec<(i32, i32)>,
+    output_pin_positions: Vec<(i32, i32)>,
+}
+
+impl Component {
+    fn new(typ: ComponentType, inputs: Vec<u32>, outputs: Vec<u32>) -> Component {
+        let width;
+        let height;
+        let mut input_pin_positions;
+        let mut output_pin_positions;
+
+        match &typ {
+            ComponentType::Const0 |
+            ComponentType::Const1 => {
+                width = 5;
+                height = 4;
+                input_pin_positions = vec![];
+                output_pin_positions = vec![(6, 2)];
+            },
+            ComponentType::AND |
+            ComponentType::OR => {
+                width = 5;
+                height = 1 + (inputs.len() as i32 - 1) * 2 + 1;
+
+                let mid = height / 2;
+                let input_top_offset = 1 + mid - inputs.len() as i32;
+                let output_top_offset = 1 + mid - outputs.len() as i32;
+
+                input_pin_positions = Vec::new();
+                for i in 0..inputs.len() {
+                    input_pin_positions.push((-1, input_top_offset + i as i32 * 2));
+                }
+
+                output_pin_positions = Vec::new();
+                for i in 0..outputs.len() {
+                    output_pin_positions.push((width + 1, output_top_offset + i as i32 * 2));
+                }
+            },
+            ComponentType::XOR => {
+                width = 5;
+                height = 4;
+                input_pin_positions = vec![(-1, 1), (-1, 3)];
+                output_pin_positions = vec![(6, 2)];
+            },
+            ComponentType::NOT => {
+                width = 5;
+                height = 4;
+                input_pin_positions = vec![(-1, 2)];
+                output_pin_positions = vec![(6, 2)];
+            },
+            ComponentType::FlipFlop => {
+                width = 5;
+                height = 6;
+                input_pin_positions = vec![(-1, 5), (-1, 1)];
+                output_pin_positions = vec![(6, 1)];
+            },
+            ComponentType::Circuit(_) => {
+                let max_pins = cmp::max(inputs.len(), outputs.len()) as i32;
+
+                width = 11;
+                height = cmp::max(4, 1 + (max_pins - 1) * 2 + 1);
+
+                let mid = height / 2;
+                let input_top_offset = 1 + mid - inputs.len() as i32;
+                let output_top_offset = 1 + mid - outputs.len() as i32;
+
+                input_pin_positions = Vec::new();
+                for i in 0..inputs.len() {
+                    input_pin_positions.push((-1, input_top_offset + i as i32 * 2));
+                }
+
+                output_pin_positions = Vec::new();
+                for i in 0..outputs.len() {
+                    output_pin_positions.push((width + 1, output_top_offset + i as i32 * 2));
+                }
+            },
+        }
+
+        Component {
+            typ,
+            inputs,
+            outputs,
+            width,
+            height,
+            input_pin_positions,
+            output_pin_positions,
+        }
+    }
+}
+
+struct Connection {
+    input: u32,
+    output: u32,
+}
+
+impl Connection {
+    fn new(input: u32, output: u32) -> Connection {
+        Connection {
+            input,
+            output,
+        }
+    }
+}
+
+enum CircuitElement {
+    Connection(Connection),
+    Component(Component),
 }
 
 struct Circuit {
     input_signal_count: u32,
     output_signal_count: u32,
     signal_count: u32,
-    components: Vec<Component>,
+    elements: Vec<CircuitElement>,
 }
 
 impl Circuit {
@@ -169,7 +282,7 @@ impl LogicSimulator {
             input_signal_count: block.input_signal_count,
             output_signal_count: block.output_signal_count,
             signal_count: io_signal_count,
-            components: Vec::new(),
+            elements: Vec::new(),
         };
 
         let mut nested_blocks_base_signals = Vec::new();
@@ -187,21 +300,22 @@ impl LogicSimulator {
 
             let nested_blocks_base_signal = nested_blocks_base_signals[i];
 
-            let mut component = Component {
-                typ: ComponentType::Circuit(nested_block.name.clone()),
-                inputs: Vec::new(),
-                outputs: Vec::new(),
-            };
+            let mut inputs = Vec::new();
+            let mut outputs = Vec::new();
 
             for j in 0..nested_block.input_signal_count {
-                component.inputs.push(nested_blocks_base_signal + j);
+                inputs.push(nested_blocks_base_signal + j);
             }
 
             for j in 0..nested_block.output_signal_count {
-                component.outputs.push(nested_blocks_base_signal + nested_block.input_signal_count + j);
+                outputs.push(nested_blocks_base_signal + nested_block.input_signal_count + j);
             }
 
-            circuit.components.push(component);
+            circuit.elements.push(CircuitElement::Component(Component::new(
+                ComponentType::Circuit(nested_block.name.clone()),
+                inputs,
+                outputs
+            )));
         }
 
         let mut max_signal_id = circuit.signal_count;
@@ -223,32 +337,34 @@ impl LogicSimulator {
         circuit.allocate_signals(max_signal_id - circuit.signal_count);
 
         for stmt in &block.statements {
-            let typ = match stmt.op {
-                IntermediateOp::Connect => ComponentType::Connect,
-                IntermediateOp::Const0 => ComponentType::Const0,
-                IntermediateOp::Const1 => ComponentType::Const1,
-                IntermediateOp::AND => ComponentType::AND,
-                IntermediateOp::OR => ComponentType::OR,
-                IntermediateOp::XOR => ComponentType::XOR,
-                IntermediateOp::NOT => ComponentType::NOT,
-                _ => return Err(ErrorKind::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op)).into()),
-            };
+            if let IntermediateOp::Connect = stmt.op {
+                circuit.elements.push(CircuitElement::Connection(Connection::new(stmt.input_signal_ids[0], stmt.output_signal_ids[0])));
+            } else {
+                let typ = match stmt.op {
+                    IntermediateOp::Connect => panic!(),
+                    IntermediateOp::Const0 => ComponentType::Const0,
+                    IntermediateOp::Const1 => ComponentType::Const1,
+                    IntermediateOp::AND => ComponentType::AND,
+                    IntermediateOp::OR => ComponentType::OR,
+                    IntermediateOp::XOR => ComponentType::XOR,
+                    IntermediateOp::NOT => ComponentType::NOT,
+                    IntermediateOp::FlipFlop => ComponentType::FlipFlop,
+                    _ => return Err(ErrorKind::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op)).into()),
+                };
 
-            let mut component = Component {
-                typ,
-                inputs: Vec::new(),
-                outputs: Vec::new(),
-            };
+                let mut inputs = Vec::new();
+                let mut outputs = Vec::new();
 
-            for &input_signal_id in &stmt.input_signal_ids {
-                component.inputs.push(input_signal_id);
+                for &input_signal_id in &stmt.input_signal_ids {
+                    inputs.push(input_signal_id);
+                }
+
+                for &output_signal_id in &stmt.output_signal_ids {
+                    outputs.push(output_signal_id);
+                }
+
+                circuit.elements.push(CircuitElement::Component(Component::new(typ, inputs, outputs)));
             }
-
-            for &output_signal_id in &stmt.output_signal_ids {
-                component.outputs.push(output_signal_id);
-            }
-
-            circuit.components.push(component);
         }
 
         Self::output_circuit(&circuit, &block.name, options, is_main)
@@ -267,116 +383,72 @@ impl LogicSimulator {
 
         let mut top_offset = 0;
 
-        for component in &circuit.components {
+        for element in &circuit.elements {
             top_offset += 1;
 
-            match &component.typ {
-                ComponentType::Connect => {
+            match element {
+                CircuitElement::Connection(connection) => {
                     circuit_data.connections.push(ConnectionData {
-                        x1: component.inputs[0] as i32 * 2,
+                        x1: connection.input as i32 * 2,
                         y1: top_offset,
-                        x2: output_connection_offset + component.outputs[0] as i32 * 2,
+                        x2: output_connection_offset + connection.output as i32 * 2,
                         y2: top_offset,
                     });
                 },
-                ComponentType::Const0 | ComponentType::Const1 => {
-                    circuit_data.components.push(CommonComponentData {
-                        x: (component_offset + 4) as i32,
-                        y: top_offset,
-                        data: ComponentData::Const {
-                            value: matches!(component.typ, ComponentType::Const1)
+                CircuitElement::Component(component) => {
+                    let data = match &component.typ {
+                        ComponentType::Const0 | ComponentType::Const1 => ComponentData::Const {
+                            value: matches!(component.typ, ComponentType::Const1),
                         },
-                    });
-
-                    top_offset += 4;
-                },
-                ComponentType::AND => {
-                    circuit_data.components.push(CommonComponentData {
-                        x: component_offset + 4,
-                        y: top_offset,
-                        data: ComponentData::AND {
-                            inputs: component.inputs.len() as u32
+                        ComponentType::AND => ComponentData::AND {
+                            inputs: component.inputs.len() as u32,
                         },
-                    });
-
-                    top_offset += 1 + (component.inputs.len() as i32 - 1) * 2 + 1;
-                },
-                ComponentType::OR => {
-                    circuit_data.components.push(CommonComponentData {
-                        x: component_offset + 4,
-                        y: top_offset,
-                        data: ComponentData::OR {
-                            inputs: component.inputs.len() as u32
+                        ComponentType::OR => ComponentData::OR {
+                            inputs: component.inputs.len() as u32,
                         },
-                    });
-
-                    top_offset += 1 + (component.inputs.len() as i32 - 1) * 2 + 1;
-                },
-                ComponentType::XOR => {
-                    circuit_data.components.push(CommonComponentData {
-                        x: component_offset + 4,
-                        y: top_offset,
-                        data: ComponentData::XOR {},
-                    });
-
-                    top_offset += 4;
-                },
-                ComponentType::NOT => {
-                    circuit_data.components.push(CommonComponentData {
-                        x: component_offset + 4,
-                        y: top_offset,
-                        data: ComponentData::NOT {},
-                    });
-
-                    top_offset += 4;
-                },
-                ComponentType::Circuit(name) => {
-                    circuit_data.components.push(CommonComponentData {
-                        x: component_offset + 1,
-                        y: top_offset,
-                        data: ComponentData::Custom {
+                        ComponentType::XOR => ComponentData::XOR {},
+                        ComponentType::NOT => ComponentData::NOT {},
+                        ComponentType::FlipFlop => ComponentData::FlipFlop {},
+                        ComponentType::Circuit(name) => ComponentData::Custom {
                             name: name.clone(),
                         },
+                    };
+
+                    circuit_data.components.push(CommonComponentData {
+                        x: component_offset + 13 / 2 - component.width / 2,
+                        y: top_offset,
+                        data
                     });
 
-                    let max_pins = component.inputs.len().max(component.outputs.len()) as i32;
-
-                    top_offset += 1 + (max_pins - 1) * 2 + 1;
+                    top_offset += component.height;
                 },
             }
 
             top_offset += 1;
 
-            if !matches!(component.typ, ComponentType::Connect) {
-                let max_pins = component.inputs.len().max(component.outputs.len()) as i32;
-                let height = (4).max(1 + (max_pins - 1) * 2 + 1);
-                let mid = height / 2;
-
-                let component_top_offset = top_offset - 1 - height;
-                let input_top_offset = component_top_offset + 1 + mid - component.inputs.len() as i32;
-                let output_top_offset = component_top_offset + 1 + mid - component.outputs.len() as i32;
-
-                let component_width = match component.typ {
-                    ComponentType::Circuit(_) => 13,
-                    _ => 7,
-                };
+            if let CircuitElement::Component(component) = element {
+                let component_top_offset = top_offset - 1 - component.height;
 
                 for (i, &input_signal_id) in component.inputs.iter().enumerate() {
-                    let y = input_top_offset + 2 * i as i32;
+                    let pos = component.input_pin_positions[i];
+
+                    let y = component_top_offset + pos.1;
 
                     circuit_data.connections.push(ConnectionData {
                         x1: input_signal_id as i32 * 2,
                         y1: y,
-                        x2: component_offset + 13 / 2 - component_width / 2,
+                        x2: component_offset + 13 / 2 - component.width / 2 + pos.0,
                         y2: y,
                     });
                 }
 
                 for (i, &output_signal_id) in component.outputs.iter().enumerate() {
-                    let y = output_top_offset + i as i32 * 2;
+                    let pos = component.output_pin_positions[i];
+
+                    let y = component_top_offset + pos.1;
 
                     circuit_data.connections.push(ConnectionData {
-                        x1: output_connection_offset - 2 - 13 / 2 + component_width / 2,
+                        x1: component_offset + 13 / 2 - component.width / 2 + pos.0,
                         y1: y,
                         x2: output_connection_offset + output_signal_id as i32 * 2,
                         y2: y,
