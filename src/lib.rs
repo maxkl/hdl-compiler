@@ -130,7 +130,9 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
         .map_err(|err| Error::with_source(ErrorKind::Compile(input_path.to_str().unwrap().to_string()), err))?;
 
     if dump_intermediate {
-        println!("{:#?}", intermediate);
+        for block in &intermediate {
+            println!("{}", block);
+        }
     }
 
     if frontend_only {

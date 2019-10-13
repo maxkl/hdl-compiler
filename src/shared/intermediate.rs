@@ -1,7 +1,10 @@
 
 use std::rc::{Weak, Rc};
+use std::fmt;
 
 use derive_more::Display;
+use serde::export::Formatter;
+
 use crate::shared::error;
 
 #[derive(Debug, Display)]
@@ -54,6 +57,28 @@ pub struct IntermediateStatement {
     pub output_signal_ids: Vec<u32>,
 }
 
+impl fmt::Display for IntermediateStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{:?}(size: {}, inputs: ", self.op, self.size)?;
+        for (i, id) in self.input_signal_ids.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{}", id)?;
+        }
+        write!(f, ", outputs: ")?;
+        for (i, id) in self.output_signal_ids.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{}", id)?;
+        }
+        write!(f, ")")?;
+
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct IntermediateBlock {
     pub name: String,
@@ -63,6 +88,32 @@ pub struct IntermediateBlock {
     pub blocks: Vec<Weak<IntermediateBlock>>,
     pub statements: Vec<IntermediateStatement>,
     pub next_signal_id: u32,
+}
+
+impl fmt::Display for IntermediateBlock {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        writeln!(f, "{}:", self.name)?;
+
+        writeln!(f, "  Inputs: {}", self.input_signal_count)?;
+        writeln!(f, "  Outputs: {}", self.output_signal_count)?;
+
+        if self.blocks.len() > 0 {
+            writeln!(f, "  Blocks:")?;
+            for block_weak in &self.blocks {
+                if let Some(block) = block_weak.upgrade() {
+                    writeln!(f, "    {} ({} inputs, {} outputs)", block.name, block.input_signal_count, block.output_signal_count)?;
+                } else {
+                    writeln!(f, "    (dropped)")?;
+                }
+            }
+        }
+
+        for stmt in &self.statements {
+            writeln!(f, "  {}", stmt)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl IntermediateBlock {
