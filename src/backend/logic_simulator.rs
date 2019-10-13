@@ -38,6 +38,10 @@ enum ComponentData {
     XOR {},
     #[serde(rename = "not")]
     NOT {},
+    #[serde(rename = "halfadder")]
+    HalfAdder {},
+    #[serde(rename = "fulladder")]
+    FullAdder {},
     #[serde(rename = "dflipflop")]
     FlipFlop {},
     #[serde(rename = "togglebutton")]
@@ -82,6 +86,8 @@ enum ComponentType {
     OR,
     XOR,
     NOT,
+    HalfAdder,
+    FullAdder,
     FlipFlop,
 
     Circuit(String),
@@ -143,6 +149,18 @@ impl Component {
                 height = 4;
                 input_pin_positions = vec![(-1, 2)];
                 output_pin_positions = vec![(6, 2)];
+            },
+            ComponentType::HalfAdder => {
+                width = 5;
+                height = 4;
+                input_pin_positions = vec![(-1, 1), (-1, 3)];
+                output_pin_positions = vec![(6, 1), (6, 3)];
+            },
+            ComponentType::FullAdder => {
+                width = 5;
+                height = 6;
+                input_pin_positions = vec![(-1, 1), (-1, 3), (-1, 5)];
+                output_pin_positions = vec![(6, 2), (6, 4)];
             },
             ComponentType::FlipFlop => {
                 width = 5;
@@ -348,6 +366,11 @@ impl LogicSimulator {
                     IntermediateOp::OR => ComponentType::OR,
                     IntermediateOp::XOR => ComponentType::XOR,
                     IntermediateOp::NOT => ComponentType::NOT,
+                    IntermediateOp::Add => match stmt.size {
+                        2 => ComponentType::HalfAdder,
+                        3 => ComponentType::FullAdder,
+                        _ => panic!(),
+                    },
                     IntermediateOp::FlipFlop => ComponentType::FlipFlop,
                     _ => return Err(ErrorKind::Custom(format!("unsupported op {:?} in intermediate statement", stmt.op)).into()),
                 };
@@ -408,6 +431,8 @@ impl LogicSimulator {
                         },
                         ComponentType::XOR => ComponentData::XOR {},
                         ComponentType::NOT => ComponentData::NOT {},
+                        ComponentType::HalfAdder => ComponentData::HalfAdder {},
+                        ComponentType::FullAdder => ComponentData::FullAdder {},
                         ComponentType::FlipFlop => ComponentData::FlipFlop {},
                         ComponentType::Circuit(name) => ComponentData::Custom {
                             name: name.clone(),

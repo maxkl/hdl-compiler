@@ -92,6 +92,7 @@ pub enum TokenKind {
     OR,
     XOR,
     NOT,
+    Plus,
 
     LeftBrace,
     RightBrace,
@@ -228,6 +229,7 @@ impl<R: Read> ILexer for Lexer<R> {
             Char('|') => Ok(Token::new(TokenKind::OR, token_location)),
             Char('^') => Ok(Token::new(TokenKind::XOR, token_location)),
             Char('~') => Ok(Token::new(TokenKind::NOT, token_location)),
+            Char('+') => Ok(Token::new(TokenKind::Plus, token_location)),
             Char('{') => Ok(Token::new(TokenKind::LeftBrace, token_location)),
             Char('}') => Ok(Token::new(TokenKind::RightBrace, token_location)),
             Char('[') => Ok(Token::new(TokenKind::LeftBracket, token_location)),
@@ -760,6 +762,7 @@ hello
 |
 ^
 ~
++
 {
 }
 [
@@ -785,17 +788,18 @@ include
             Token::new(TokenKind::OR, Location::new(10, 1)),
             Token::new(TokenKind::XOR, Location::new(11, 1)),
             Token::new(TokenKind::NOT, Location::new(12, 1)),
-            Token::new(TokenKind::LeftBrace, Location::new(13, 1)),
-            Token::new(TokenKind::RightBrace, Location::new(14, 1)),
-            Token::new(TokenKind::LeftBracket, Location::new(15, 1)),
-            Token::new(TokenKind::RightBracket, Location::new(16, 1)),
-            Token::new(TokenKind::LeftParenthesis, Location::new(17, 1)),
-            Token::new(TokenKind::RightParenthesis, Location::new(18, 1)),
-            Token::new(TokenKind::InKeyword, Location::new(19, 1)),
-            Token::new(TokenKind::OutKeyword, Location::new(20, 1)),
-            Token::new(TokenKind::BlockKeyword, Location::new(21, 1)),
-            Token::new(TokenKind::IncludeKeyword, Location::new(22, 1)),
-            Token::new(TokenKind::EndOfFile, Location::new(23, 0)),
+            Token::new(TokenKind::Plus, Location::new(13, 1)),
+            Token::new(TokenKind::LeftBrace, Location::new(14, 1)),
+            Token::new(TokenKind::RightBrace, Location::new(15, 1)),
+            Token::new(TokenKind::LeftBracket, Location::new(16, 1)),
+            Token::new(TokenKind::RightBracket, Location::new(17, 1)),
+            Token::new(TokenKind::LeftParenthesis, Location::new(18, 1)),
+            Token::new(TokenKind::RightParenthesis, Location::new(19, 1)),
+            Token::new(TokenKind::InKeyword, Location::new(20, 1)),
+            Token::new(TokenKind::OutKeyword, Location::new(21, 1)),
+            Token::new(TokenKind::BlockKeyword, Location::new(22, 1)),
+            Token::new(TokenKind::IncludeKeyword, Location::new(23, 1)),
+            Token::new(TokenKind::EndOfFile, Location::new(24, 0)),
         ];
 
         let result = expect_tokens(source_text, &expected_tokens);
