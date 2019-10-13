@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::borrow::Borrow;
 
 use derive_more::Display;
-use matches::matches;
 
 use crate::shared::intermediate::{IntermediateBlock, IntermediateStatement, IntermediateOp, Intermediate};
 use super::ast::*;
@@ -105,10 +104,26 @@ impl IntermediateGenerator {
         // Generate flip-flops for all output signals
         if block.is_sequential {
             // Find the clock input
-            let clock = symbol_table.iter()
-                .find(|symbol| matches!(symbol.typ.specifier, SymbolTypeSpecifier::Clock(_)))
+            let (clock_signal_id_source, edge_type) = symbol_table.iter()
+                .find_map(|symbol| match symbol.typ.specifier {
+                    SymbolTypeSpecifier::Clock(edge_type) => Some((symbol.output_base_signal_id, edge_type)),
+                    _ => None,
+                })
                 .unwrap();
-            let clock_signal_id = clock.output_base_signal_id;
+
+            let clock_signal_id = match edge_type {
+                EdgeType::Rising => clock_signal_id_source,
+                EdgeType::Falling => {
+                    let output_signal_id = intermediate_block.allocate_signals(1);
+
+                    let mut stmt = IntermediateStatement::new(IntermediateOp::NOT, 1)?;
+                    stmt.set_input(0, clock_signal_id_source);
+                    stmt.set_output(0, output_signal_id);
+                    intermediate_block.add_statement(stmt);
+
+                    output_signal_id
+                },
+            };
 
             for symbol in symbol_table.iter_mut() {
                 if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
