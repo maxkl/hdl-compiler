@@ -263,11 +263,14 @@ impl IntermediateGenerator {
         let output_signal_id = intermediate_block.allocate_signals(expression_width as u32);
 
         match op {
-            BinaryOp::AND | BinaryOp::OR | BinaryOp::XOR => {
+            BinaryOp::AND |
+            BinaryOp::OR |
+            BinaryOp::XOR => {
                 let intermediate_op = match op {
                     BinaryOp::AND => IntermediateOp::AND,
                     BinaryOp::OR => IntermediateOp::OR,
                     BinaryOp::XOR => IntermediateOp::XOR,
+                    _ => panic!(),
                 };
 
                 for i in 0..expression_width {
@@ -293,6 +296,31 @@ impl IntermediateGenerator {
                     stmt.set_output(0, output_signal_id + i as u32);
 
                     intermediate_block.add_statement(stmt);
+                }
+            },
+            BinaryOp::Add => {
+                let mut prev_carry_signal_id = 0;
+
+                for i in 0..expression_width {
+                    let carry_signal_id = intermediate_block.allocate_signals(1);
+
+                    let mut stmt = IntermediateStatement::new(
+                        IntermediateOp::Add,
+                        if i > 0 { 3 } else { 2 }
+                    )?;
+
+                    stmt.set_input(0, input_signal_id_left + i as u32);
+                    stmt.set_input(1, input_signal_id_right + i as u32);
+                    if i > 0 {
+                        stmt.set_input(2, prev_carry_signal_id);
+                    }
+
+                    stmt.set_output(0, output_signal_id + i as u32);
+                    stmt.set_output(1, carry_signal_id);
+
+                    intermediate_block.add_statement(stmt);
+
+                    prev_carry_signal_id = carry_signal_id;
                 }
             },
         }

@@ -117,6 +117,7 @@ impl<L: ILexer> Parser<L> {
     ///
     /// Unary:
     ///   Bitwise NOT: ~
+    /// Addition: +
     /// Bitwise AND: &
     /// Bitwise XOR: ^
     /// Bitwise OR: |
@@ -125,7 +126,8 @@ impl<L: ILexer> Parser<L> {
     /// expr         = bit_or_expr ;
     /// bit_or_expr  = bit_xor_expr, { '|', bit_xor_expr } ;
     /// bit_xor_expr = bit_and_expr, { '^', bit_and_expr } ;
-    /// bit_and_expr = unary_expr, { '&', unary_expr } ;
+    /// bit_and_expr = addition_expr, { '&', addition_expr } ;
+    /// addition_expr = unary_expr, { '+', unary_expr } ;
     /// unary_expr   = '~', unary_expr | primary_expr ;
     /// primary_expr = '(', expr, ')' | behaviour_identifier | number ;
     /// ```
@@ -441,15 +443,32 @@ impl<L: ILexer> Parser<L> {
     }
 
     fn parse_bitwise_and_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
-        let mut left = self.parse_unary_expression()?;
+        let mut left = self.parse_addition_expression()?;
 
         while self.lookahead.kind == TokenKind::AND {
             self.match_token(TokenKind::AND)?;
 
-            let right = self.parse_unary_expression()?;
+            let right = self.parse_addition_expression()?;
 
             left = Box::new(ExpressionNode {
                 data: ExpressionNodeData::Binary(BinaryOp::AND, left, right),
+                typ: None,
+            })
+        }
+
+        Ok(left)
+    }
+
+    fn parse_addition_expression(&mut self) -> Result<Box<ExpressionNode>, Error> {
+        let mut left = self.parse_unary_expression()?;
+
+        while self.lookahead.kind == TokenKind::Plus {
+            self.match_token(TokenKind::Plus)?;
+
+            let right = self.parse_unary_expression()?;
+
+            left = Box::new(ExpressionNode {
+                data: ExpressionNodeData::Binary(BinaryOp::Add, left, right),
                 typ: None,
             })
         }
