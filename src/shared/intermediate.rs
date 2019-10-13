@@ -3,7 +3,6 @@ use std::rc::{Weak, Rc};
 use std::fmt;
 
 use derive_more::Display;
-use serde::export::Formatter;
 
 use crate::shared::error;
 
@@ -175,6 +174,157 @@ impl IntermediateBlock {
 
     pub fn add_statement(&mut self, statement: IntermediateStatement) {
         self.statements.push(statement);
+    }
+
+    pub fn optimize(&mut self) {
+        // Stores the groups of signals which are directly connected
+        let mut signal_groups: Vec<Vec<u32>> = Vec::new();
+
+        for stmt in &self.statements {
+            if let IntermediateOp::Connect = stmt.op {
+                let signal1 = stmt.input_signal_ids[0];
+                let signal2 = stmt.output_signal_ids[0];
+
+                let mut group1_index = None;
+                let mut group2_index = None;
+
+                // Are the two signals already contained in groups?
+                for (i, group) in signal_groups.iter().enumerate() {
+                    if group.contains(&signal1) {
+                        group1_index = Some(i);
+                    }
+                    if group.contains(&signal2) {
+                        group2_index = Some(i);
+                    }
+                }
+
+                if group1_index.is_some() && group2_index.is_some() {
+                    // The two signals are already contained in groups
+                    // This means that the connection connects two already existing groups,
+                    // which we therefore have to merge
+
+                    let group1_index = group1_index.unwrap();
+                    let group2_index = group2_index.unwrap();
+
+                    if group1_index != group2_index {
+                        let group2 = signal_groups[group2_index].clone();
+                        let group1 = &mut signal_groups[group1_index];
+
+                        // Append elements from group 2 to group 1
+                        group1.extend(group2.iter());
+
+                        signal_groups.remove(group2_index);
+                    }
+                } else if group1_index.is_some() {
+                    // Only signal 1 is contained in a group
+                    // -> add signal 2 to this group
+
+                    let group1_index = group1_index.unwrap();
+
+                    signal_groups[group1_index].push(signal2);
+                } else if group2_index.is_some() {
+                    // Only signal 2 is contained in a group
+                    // -> add signal 1 to this group
+
+                    let group2_index = group2_index.unwrap();
+
+                    signal_groups[group2_index].push(signal1);
+                } else {
+                    // No signal is contained in a group
+                    // -> create a new group with both signals in it
+
+                    signal_groups.push(vec![signal1, signal2]);
+                }
+            } else {
+                // Create new groups for all signals used in this statement that aren't in any group
+
+                let all_signals = stmt.input_signal_ids.iter().chain(stmt.output_signal_ids.iter());
+                for signal in all_signals {
+                    let is_in_group = signal_groups.iter()
+                        .any(|group| group.contains(signal));
+
+                    if !is_in_group {
+                        signal_groups.push(vec![*signal]);
+                    }
+                }
+            }
+        }
+
+        let mut group_signals = Vec::new();
+
+        // We have to keep these signals because they are the public interface to other blocks
+        let io_count = self.input_signal_count + self.output_signal_count;
+        // We also can't change the connection signals to other blocks easily
+        let block_signal_count = self.blocks.iter()
+            .map(|block_weak| {
+                let block = block_weak.upgrade().unwrap();
+                block.input_signal_count + block.output_signal_count
+            })
+            .sum::<u32>();
+        // These first N signals will not be eliminated
+        let reserved_signal_count = io_count + block_signal_count;
+
+        // Determine the new signals, one for each group
+        let mut next_group_signal = reserved_signal_count;
+        for group in &mut signal_groups {
+            let mut group_signal: Option<u32> = None;
+
+            // Check if any of the signals in this group is a reserved signal. If there is one, it
+            // will be the new signal for the whole group. If there are multiple reserved signals,
+            // only the first one is used. The other ones are removed from the group so that
+            // reserved signals remain connected.
+            group.retain(|&signal| {
+                // Is the signal reserved?
+                if signal < reserved_signal_count {
+                    if group_signal.is_some() {
+                        // We already came across a reserved signal -> remove this one from the group
+                        false
+                    } else {
+                        group_signal = Some(signal);
+
+                        true
+                    }
+                } else {
+                    true
+                }
+            });
+
+            // If there was no reserved signal in the group, assign a new signal ID to this group
+            let group_signal = group_signal.unwrap_or_else(|| {
+                let tmp = next_group_signal;
+                next_group_signal += 1;
+                tmp
+            });
+
+            group_signals.push(group_signal);
+        }
+
+        // Remove connection statements that connect two signals in the same group, they are
+        // redundant now
+        self.statements.retain(|stmt| {
+            if let IntermediateOp::Connect = stmt.op {
+                for group in &signal_groups {
+                    if group.contains(&stmt.input_signal_ids[0]) && group.contains(&stmt.output_signal_ids[0]) {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        });
+
+        // Replace all occurrences of the old signals with the new group signals
+        for stmt in &mut self.statements {
+            let all_signals = stmt.input_signal_ids.iter_mut().chain(stmt.output_signal_ids.iter_mut());
+            for signal in all_signals {
+                for (group_index, group) in signal_groups.iter().enumerate() {
+                    if group.contains(signal) {
+                        *signal = group_signals[group_index];
+                        break;
+                    }
+                }
+            }
+        }
     }
 }
 

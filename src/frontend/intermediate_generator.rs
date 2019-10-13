@@ -37,17 +37,17 @@ enum AccessDirection {
 }
 
 impl IntermediateGenerator {
-    pub fn generate(root: &RootNode) -> Result<Intermediate, Error> {
-        Self::generate_blocks(root)
+    pub fn generate(root: &RootNode, optimization_level: u32) -> Result<Intermediate, Error> {
+        Self::generate_blocks(root, optimization_level)
     }
 
-    fn generate_blocks(root: &RootNode) -> Result<Vec<Rc<IntermediateBlock>>, Error> {
+    fn generate_blocks(root: &RootNode, optimization_level: u32) -> Result<Vec<Rc<IntermediateBlock>>, Error> {
         root.blocks.iter()
-            .map(|block| Self::generate_block(&mut RefCell::borrow_mut(block)))
+            .map(|block| Self::generate_block(&mut RefCell::borrow_mut(block), optimization_level))
             .collect()
     }
 
-    fn generate_block(block: &mut BlockNode) -> Result<Rc<IntermediateBlock>, Error> {
+    fn generate_block(block: &mut BlockNode, optimization_level: u32) -> Result<Rc<IntermediateBlock>, Error> {
         let symbol_table_refcell = block.symbol_table.as_ref().unwrap();
         let mut symbol_table = RefCell::borrow_mut(symbol_table_refcell);
 
@@ -146,6 +146,10 @@ impl IntermediateGenerator {
 
         for behaviour_statement in &block.behaviour_statements {
             Self::generate_behaviour_statement(behaviour_statement, &symbol_table, &mut intermediate_block)?;
+        }
+
+        if optimization_level > 0 {
+            intermediate_block.optimize();
         }
 
         let intermediate_block_rc = Rc::new(intermediate_block);

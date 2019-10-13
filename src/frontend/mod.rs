@@ -60,7 +60,7 @@ fn make_absolute<P1: AsRef<Path>, P2: AsRef<Path>>(relative: P1, root: P2) -> Pa
     }
 }
 
-fn compile_subtree(path: &Path, cache: &mut Cache) -> result::Result<(), Error> {
+fn compile_subtree(path: &Path, cache: &mut Cache, optimization_level: u32) -> result::Result<(), Error> {
     assert!(path.is_absolute());
 
     let directory = path.parent().unwrap();
@@ -95,14 +95,14 @@ fn compile_subtree(path: &Path, cache: &mut Cache) -> result::Result<(), Error> 
                 return Err(Error::new(ErrorKind::CyclicInclude));
             }
         } else {
-            compile_subtree(&full_path, cache)?;
+            compile_subtree(&full_path, cache, optimization_level)?;
         }
     }
 
     SemanticAnalyzer::analyze(&mut root, cache)
         .map_err(|err| Error::with_source(ErrorKind::SemanticAnalyzer, err))?;
 
-    let intermediate = IntermediateGenerator::generate(&root)
+    let intermediate = IntermediateGenerator::generate(&root, optimization_level)
         .map_err(|err| Error::with_source(ErrorKind::IntermediateGenerator, err))?;
 
     let cache_entry = cache.get_mut(path).unwrap();
@@ -113,12 +113,12 @@ fn compile_subtree(path: &Path, cache: &mut Cache) -> result::Result<(), Error> 
     Ok(())
 }
 
-pub fn compile(path: &Path) -> Result {
+pub fn compile(path: &Path, optimization_level: u32) -> Result {
     let mut cache = Cache::new();
 
     let full_path = make_absolute(path, env::current_dir().unwrap());
 
-    compile_subtree(&full_path, &mut cache)?;
+    compile_subtree(&full_path, &mut cache, optimization_level)?;
 
     let all_intermediate = cache.collect_intermediate();
 

@@ -12,7 +12,7 @@ use derive_more::Display;
 use crate::shared::intermediate::Intermediate;
 use crate::shared::error;
 
-const FRONTENDS: [(&str, fn(&Path) -> frontend::Result); 1] = [
+const FRONTENDS: [(&str, fn(&Path, optimization_level: u32) -> frontend::Result); 1] = [
     ("hdl", frontend::compile),
 ];
 
@@ -67,11 +67,18 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
             .short("b")
             .value_name("BACKEND")
             .help("Use a specific backend")
-            .possible_values(&backend_names))
+            .possible_values(&backend_names)
+            .default_value(default_backend))
         .arg(Arg::with_name("output_file")
             .short("o")
             .value_name("FILE")
             .help("Write output to FILE"))
+        .arg(Arg::with_name("optimization")
+            .short("O")
+            .value_name("LEVEL")
+            .help("Optimization level")
+            .possible_values(&["0", "1"])
+            .default_value("1"))
         .arg(Arg::with_name("backend_args")
             .short("B")
             .value_name("ARG")
@@ -95,7 +102,11 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     let frontend_only = matches.is_present("frontend_only");
 
-    let backend_name = matches.value_of("backend").unwrap_or(default_backend);
+    let backend_name = matches.value_of("backend").unwrap();
+
+    let optimization_level = matches.value_of("optimization").unwrap()
+        .parse::<u32>()
+        .unwrap();
 
     let output_file = matches.value_of("output_file");
 
@@ -126,7 +137,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
         .find(|frontend| frontend.0 == frontend_name)
         .unwrap().1;
 
-    let intermediate = frontend_fn(input_path)
+    let intermediate = frontend_fn(input_path, optimization_level)
         .map_err(|err| Error::with_source(ErrorKind::Compile(input_path.to_str().unwrap().to_string()), err))?;
 
     if dump_intermediate {
