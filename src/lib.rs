@@ -59,7 +59,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
             .possible_values(&frontend_names))
         .arg(Arg::with_name("dump_intermediate")
             .short("d")
-            .help("Treat the input file as intermediate code and pretty-print it"))
+            .help("Pretty-print the intermediate code to the standard output after running the frontend"))
         .arg(Arg::with_name("frontend_only")
             .short("i")
             .help("Compile the input file to intermediate code"))
@@ -106,11 +106,6 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
         .map(|backend_args| backend_args.collect::<Vec<_>>())
         .unwrap_or(Vec::new());
 
-    if dump_intermediate {
-        // TODO: read and dump intermediate files
-        return Err(ErrorKind::NotImplemented.into());
-    }
-
     let input_path = Path::new(input_file_name);
 
     let frontend_name = if let Some(value) = input_file_type {
@@ -133,6 +128,10 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     let intermediate = frontend_fn(input_path)
         .map_err(|err| Error::with_source(ErrorKind::Compile(input_path.to_str().unwrap().to_string()), err))?;
+
+    if dump_intermediate {
+        println!("{:#?}", intermediate);
+    }
 
     if frontend_only {
         // TODO: output intermediate file
