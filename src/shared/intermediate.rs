@@ -87,6 +87,9 @@ pub struct IntermediateBlock {
     pub blocks: Vec<Weak<IntermediateBlock>>,
     pub statements: Vec<IntermediateStatement>,
     pub next_signal_id: u32,
+
+    pub input_signal_names: Vec<String>,
+    pub output_signal_names: Vec<String>,
 }
 
 impl fmt::Display for IntermediateBlock {
@@ -124,6 +127,8 @@ impl IntermediateBlock {
             blocks: Vec::new(),
             statements: Vec::new(),
             next_signal_id: 0,
+            input_signal_names: Vec::new(),
+            output_signal_names: Vec::new(),
         }
     }
 
@@ -133,26 +138,34 @@ impl IntermediateBlock {
         base_signal_id
     }
 
-    pub fn allocate_input_signals(&mut self, count: u32) -> Result<u32, Error> {
+    pub fn allocate_input_signals(&mut self, count: u32, names: &Vec<String>) -> Result<u32, Error> {
         if self.output_signal_count > 0 || !self.blocks.is_empty() || !self.statements.is_empty() {
             return Err(ErrorKind::NoMoreInputSignals.into());
         }
+
+        assert_eq!(names.len(), count as usize);
 
         let base_signal_id = self.next_signal_id;
         self.input_signal_count += count;
         self.next_signal_id += count;
 
+        self.input_signal_names.extend(names.iter().cloned());
+
         Ok(base_signal_id)
     }
 
-    pub fn allocate_output_signals(&mut self, count: u32) -> Result<u32, Error> {
+    pub fn allocate_output_signals(&mut self, count: u32, names: &Vec<String>) -> Result<u32, Error> {
         if !self.blocks.is_empty() || !self.statements.is_empty() {
             return Err(ErrorKind::NoMoreOutputSignals.into());
         }
 
+        assert_eq!(names.len(), count as usize);
+
         let base_signal_id = self.next_signal_id;
         self.output_signal_count += count;
         self.next_signal_id += count;
+
+        self.output_signal_names.extend(names.iter().cloned());
 
         Ok(base_signal_id)
     }

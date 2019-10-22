@@ -36,6 +36,16 @@ enum AccessDirection {
     Write,
 }
 
+fn generate_signal_names(name: &str, count: usize) -> Vec<String> {
+    if count == 1 {
+        vec![name.to_string()]
+    } else {
+        (0..count)
+            .map(|index| format!("{}[{}]", name, index))
+            .collect()
+    }
+}
+
 impl IntermediateGenerator {
     pub fn generate(root: &RootNode, optimization_level: u32) -> Result<Intermediate, Error> {
         Self::generate_blocks(root, optimization_level)
@@ -55,7 +65,8 @@ impl IntermediateGenerator {
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Clock(_) = symbol.typ.specifier {
-                let signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+                let signal_names = generate_signal_names(&symbol.name, symbol.typ.width as usize);
+                let signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32, &signal_names)?;
                 symbol.base_signal_id = signal_id;
                 symbol.output_base_signal_id = signal_id;
             }
@@ -63,7 +74,8 @@ impl IntermediateGenerator {
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::In = symbol.typ.specifier {
-                let signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32)?;
+                let signal_names = generate_signal_names(&symbol.name, symbol.typ.width as usize);
+                let signal_id = intermediate_block.allocate_input_signals(symbol.typ.width as u32, &signal_names)?;
                 symbol.base_signal_id = signal_id;
                 symbol.output_base_signal_id = signal_id;
             }
@@ -71,7 +83,8 @@ impl IntermediateGenerator {
 
         for symbol in symbol_table.iter_mut() {
             if let SymbolTypeSpecifier::Out = symbol.typ.specifier {
-                let signal_id = intermediate_block.allocate_output_signals(symbol.typ.width as u32)?;
+                let signal_names = generate_signal_names(&symbol.name, symbol.typ.width as usize);
+                let signal_id = intermediate_block.allocate_output_signals(symbol.typ.width as u32, &signal_names)?;
 
                 if block.is_sequential {
                     // symbol.base_signal_id will be set later when the output flip-flops are generated
