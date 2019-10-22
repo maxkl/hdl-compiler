@@ -221,14 +221,16 @@ enum CircuitElement {
     Component(Component),
 }
 
-struct Circuit {
+struct Circuit<'a> {
     input_signal_count: u32,
     output_signal_count: u32,
     signal_count: u32,
     elements: Vec<CircuitElement>,
+    input_signal_names: &'a Vec<String>,
+    output_signal_names: &'a Vec<String>,
 }
 
-impl Circuit {
+impl<'a> Circuit<'a> {
     fn allocate_signals(&mut self, count: u32) -> u32 {
         let base_signal = self.signal_count;
         self.signal_count += count;
@@ -301,6 +303,8 @@ impl LogicSimulator {
             output_signal_count: block.output_signal_count,
             signal_count: io_signal_count,
             elements: Vec::new(),
+            input_signal_names: &block.input_signal_names,
+            output_signal_names: &block.output_signal_names,
         };
 
         let mut nested_blocks_base_signals = Vec::new();
@@ -496,7 +500,7 @@ impl LogicSimulator {
                     x: -8,
                     y: (i as i32 - circuit.input_signal_count as i32) * 6 + 1,
                     data: ComponentData::Input {
-                        label: i.to_string(),
+                        label: circuit.input_signal_names[i as usize].clone(),
                     },
                 });
             }
@@ -519,7 +523,7 @@ impl LogicSimulator {
                     x: (circuit.input_signal_count + circuit.output_signal_count) as i32 * 2 + 1,
                     y: (i as i32 - circuit.output_signal_count as i32) * 6 + 1,
                     data: ComponentData::Output {
-                        label: i.to_string(),
+                        label: circuit.output_signal_names[i as usize].clone(),
                     },
                 });
             }
