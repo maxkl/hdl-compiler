@@ -2,8 +2,9 @@
 use std::borrow::Borrow;
 use std::rc::{Rc, Weak};
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, BufReader};
 use std::cmp;
+use std::path::PathBuf;
 
 use serde::{Serialize, Deserialize};
 use serde_json;
@@ -15,9 +16,10 @@ use crate::backend::{Error, ErrorKind};
 
 struct Options {
     io_components: bool,
+    testbench: Option<PathBuf>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct ConnectionData {
     x1: i32,
     y1: i32,
@@ -25,7 +27,7 @@ struct ConnectionData {
     y2: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum ComponentData {
     #[serde(rename = "const")]
@@ -54,9 +56,20 @@ enum ComponentData {
     Input { label: String },
     #[serde(rename = "output")]
     Output { label: String },
+
+    #[serde(rename = "clock")]
+    Clock { period: u32 },
+    #[serde(rename = "bargraph")]
+    BarGraph { size: u32, #[serde(rename = "offColor")] off_color: String, #[serde(rename = "onColor")] on_color: String },
+    #[serde(rename = "register")]
+    Register { width: u32 },
+    #[serde(rename = "sram")]
+    SRAM { addresswidth: u32, datawidth: u32 },
+    #[serde(rename = "rom")]
+    ROM { addresswidth: u32, wordsize: u32, contents: String },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CommonComponentData {
     x: i32,
     y: i32,
@@ -65,7 +78,7 @@ struct CommonComponentData {
     data: ComponentData,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CircuitData {
     name: String,
     label: String,
@@ -242,22 +255,71 @@ pub struct LogicSimulator {
     //
 }
 
+enum CommandLineOption {
+    None,
+    Testbench,
+}
+
 impl LogicSimulator {
     pub fn run(output_path: Option<&str>, blocks: &Intermediate, args: &[&str]) -> backend::Result {
         let mut options = Options {
             io_components: true,
+            testbench: None,
         };
 
+        let mut current_option = CommandLineOption::None;
+
         for &arg in args {
-            match arg {
-                "--no-io-components" => options.io_components = false,
-                arg => return Err(ErrorKind::Custom(format!("unrecognized backend option '{}'", arg)).into()),
+            match current_option {
+                CommandLineOption::None => match arg {
+                    "--no-io-components" => options.io_components = false,
+                    "--testbench" => current_option = CommandLineOption::Testbench,
+                    arg => return Err(ErrorKind::Custom(format!("unrecognized backend option '{}'", arg)).into()),
+                },
+                CommandLineOption::Testbench => {
+                    options.testbench = Some(PathBuf::from(arg));
+
+                    current_option = CommandLineOption::None;
+                },
             }
+        }
+
+        if let CommandLineOption::None = current_option {
+            //
+        } else {
+            return Err(ErrorKind::Custom("missing value for last option".to_string()).into());
         }
 
         let output_path = output_path.unwrap_or("circuit.json");
 
-        let circuits = Self::generate_circuits(blocks, &options)?;
+        let mut circuits = Self::generate_circuits(blocks, &options)?;
+
+        if let Some(testbench_path) = options.testbench {
+            let testbench_file = File::open(testbench_path)
+                .map_err(|e| Error::with_source(ErrorKind::Custom("unable to open testbench file".to_string()), e))?;
+            let testbench_reader = BufReader::new(testbench_file);
+
+            let testbench_data: FileData = serde_json::from_reader(testbench_reader)
+                .map_err(|e| Error::with_source(ErrorKind::Custom("unable to read testbench file".to_string()), e))?;
+
+            for circuit in &testbench_data.circuits {
+                if circuit.name == "main" {
+                    let main_circuit = circuits.iter_mut()
+                        .find(|circuit| circuit.name == "main")
+                        .unwrap();
+
+                    for component in &circuit.components {
+                        main_circuit.components.push((*component).clone());
+                    }
+
+                    for connection in &circuit.connections {
+                        main_circuit.connections.push((*connection).clone());
+                    }
+                } else {
+                    circuits.push((*circuit).clone());
+                }
+            }
+        }
 
         let data = FileData {
             version: 1,
