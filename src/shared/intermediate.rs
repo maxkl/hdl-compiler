@@ -60,7 +60,7 @@ pub struct IntermediateStatement {
 }
 
 impl fmt::Display for IntermediateStatement {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}(size: {}, inputs: ", self.op, self.size)?;
         for (i, id) in self.input_signal_ids.iter().enumerate() {
             if i > 0 {
@@ -96,7 +96,7 @@ pub struct IntermediateBlock {
 }
 
 impl fmt::Display for IntermediateBlock {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}:", self.name)?;
 
         writeln!(f, "  Inputs: {}", self.input_signal_count)?;

@@ -148,7 +148,7 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
 
     if dump_intermediate {
         for block in &intermediate {
-            println!("{}", block);
+            eprintln!("{}", block);
         }
     }
 
