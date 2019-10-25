@@ -1,0 +1,3 @@
+[submodule "examples/CPU"]
+	path = examples/CPU
+	url = git@gitlab.com:maxkl2/hdl-cpu.git
