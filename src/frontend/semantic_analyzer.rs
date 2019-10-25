@@ -370,7 +370,7 @@ impl SemanticAnalyzer {
         Ok(expression_type)
     }
 
-    fn analyze_binary_expression(_op: BinaryOp, left: &mut ExpressionNode, right: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
+    fn analyze_binary_expression(op: BinaryOp, left: &mut ExpressionNode, right: &mut ExpressionNode, symbol_table: &SymbolTable) -> Result<ExpressionType, Error> {
         let expression_type_left = Self::analyze_expression(left, symbol_table)?;
 
         if !expression_type_left.access_type.readable {
@@ -386,14 +386,41 @@ impl SemanticAnalyzer {
         let left_width = expression_type_left.width;
         let right_width = expression_type_right.width;
 
-        // Allow one of the operands to be a single bit, in which case it will be applied to every bit of the other operand
-        if left_width != right_width && left_width != 1 && right_width != 1 {
-            return Err(ErrorKind::IncompatibleOperandTypes("binary".to_string()).into());
-        }
+        let result_width = match op {
+            BinaryOp::AND |
+            BinaryOp::OR |
+            BinaryOp::XOR => {
+                // Allow one of the operands to be a single bit, in which case it will be applied to every bit of the other operand
+                if left_width != right_width && left_width != 1 && right_width != 1 {
+                    let op_str = match op {
+                        BinaryOp::AND => "&",
+                        BinaryOp::OR => "|",
+                        BinaryOp::XOR => "^",
+                        _ => unreachable!(),
+                    };
+                    return Err(ErrorKind::IncompatibleOperandTypes(op_str.to_string()).into());
+                }
+
+                cmp::max(left_width, right_width)
+            },
+            BinaryOp::Add => {
+                // Both operands have to have the same width
+                if left_width != right_width {
+                    return Err(ErrorKind::IncompatibleOperandTypes("+".to_string()).into());
+                }
+
+                left_width
+            },
+            BinaryOp::Concatenate => {
+                // There are no constraints on operand width
+
+                left_width + right_width
+            },
+        };
 
         Ok(ExpressionType {
             access_type: AccessType::r(),
-            width: cmp::max(left_width, right_width),
+            width: result_width,
         })
     }
 }
