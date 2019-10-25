@@ -126,6 +126,7 @@ pub enum BinaryOp {
     OR,
     XOR,
     Add,
+    Concatenate,
 }
 
 #[derive(Debug, Copy, Clone)]

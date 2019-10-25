@@ -279,6 +279,9 @@ impl IntermediateGenerator {
 
         let output_signal_id = intermediate_block.allocate_signals(expression_width as u32);
 
+        let left_width = left.typ.as_ref().unwrap().width;
+        let right_width = right.typ.as_ref().unwrap().width;
+
         match op {
             BinaryOp::AND |
             BinaryOp::OR |
@@ -295,13 +298,13 @@ impl IntermediateGenerator {
 
                     // One of the operands may only be a single bit wide, in which case it is applied to every bit
 
-                    let input_a = if left.typ.as_ref().unwrap().width > 1 {
+                    let input_a = if left_width > 1 {
                         input_signal_id_left + i as u32
                     } else {
                         input_signal_id_left
                     };
 
-                    let input_b = if right.typ.as_ref().unwrap().width > 1 {
+                    let input_b = if right_width > 1 {
                         input_signal_id_right + i as u32
                     } else {
                         input_signal_id_right
@@ -338,6 +341,23 @@ impl IntermediateGenerator {
                     intermediate_block.add_statement(stmt);
 
                     prev_carry_signal_id = carry_signal_id;
+                }
+            },
+            BinaryOp::Concatenate => {
+                for i in 0..expression_width {
+                    let mut stmt = IntermediateStatement::new(IntermediateOp::Connect, 1)?;
+
+                    let input = if i < right_width {
+                        input_signal_id_right + i as u32
+                    } else {
+                        input_signal_id_left + (i - right_width) as u32
+                    };
+
+                    stmt.set_input(0, input);
+
+                    stmt.set_output(0, output_signal_id + i as u32);
+
+                    intermediate_block.add_statement(stmt);
                 }
             },
         }
