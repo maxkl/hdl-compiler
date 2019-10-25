@@ -1,6 +1,9 @@
 
 use std::rc::{Weak, Rc};
 use std::fmt;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::cmp::Reverse;
 
 use derive_more::Display;
 
@@ -28,7 +31,7 @@ pub type Error = error::Error<ErrorKind>;
 
 pub type Intermediate = Vec<Rc<IntermediateBlock>>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntermediateOp {
     Connect,
 
@@ -113,6 +116,37 @@ impl fmt::Display for IntermediateBlock {
         for stmt in &self.statements {
             writeln!(f, "  {}", stmt)?;
         }
+
+        Ok(())
+    }
+}
+
+pub struct StatementCounts {
+    counts: HashMap<IntermediateOp, usize>,
+}
+
+impl fmt::Display for StatementCounts {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut counts_sorted = self.counts.iter()
+            .collect::<Vec<_>>();
+        counts_sorted.sort_unstable_by_key(|(op, count)| Reverse(*count));
+
+        let mut sum = 0;
+        let mut max_len = 0;
+        for (op, count) in counts_sorted {
+            let s = format!("{:?}: {}", op, count);
+
+            if s.len() > max_len {
+                max_len = s.len();
+            }
+
+            writeln!(f, "{}", s)?;
+
+            sum += count;
+        }
+
+        writeln!(f, "{}", "-".repeat(max_len))?;
+        writeln!(f, "total: {}", sum)?;
 
         Ok(())
     }
@@ -337,6 +371,42 @@ impl IntermediateBlock {
                     }
                 }
             }
+        }
+    }
+
+    pub fn count_statements(&self) -> StatementCounts {
+        let mut counts = HashMap::new();
+
+        for statement in &self.statements {
+            match counts.entry(statement.op) {
+                Entry::Occupied(mut o) => {
+                    o.insert(o.get() + 1);
+                },
+                Entry::Vacant(v) => {
+                    v.insert(1);
+                },
+            }
+        }
+
+        for nested_block_weak in &self.blocks {
+            let nested_block = nested_block_weak.upgrade().unwrap();
+
+            let nested_counts = nested_block.count_statements();
+
+            for (op, count) in nested_counts.counts {
+                match counts.entry(op) {
+                    Entry::Occupied(mut o) => {
+                        o.insert(o.get() + count);
+                    },
+                    Entry::Vacant(v) => {
+                        v.insert(count);
+                    },
+                }
+            }
+        }
+
+        StatementCounts {
+            counts
         }
     }
 }

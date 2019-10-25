@@ -79,6 +79,10 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
             .help("Optimization level")
             .possible_values(&["0", "1"])
             .default_value("1"))
+        .arg(Arg::with_name("count_statements")
+            .long("count-statements")
+            .value_name("BLOCK")
+            .help("Print the number of intermediate statements in the specified block"))
         .arg(Arg::with_name("backend_args")
             .short("B")
             .value_name("ARG")
@@ -107,6 +111,8 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     let optimization_level = matches.value_of("optimization").unwrap()
         .parse::<u32>()
         .unwrap();
+
+    let count_statements = matches.value_of("count_statements");
 
     let output_file = matches.value_of("output_file");
 
@@ -143,6 +149,17 @@ pub fn run(args: Vec<String>) -> Result<(), Error> {
     if dump_intermediate {
         for block in &intermediate {
             println!("{}", block);
+        }
+    }
+
+    if let Some(block_name) = count_statements {
+        let block = intermediate.iter()
+            .find(|block| block.name == block_name);
+
+        if let Some(block) = block {
+            eprintln!("{}", block.count_statements());
+        } else {
+            eprintln!("block \"{}\" not found", block_name);
         }
     }
 
